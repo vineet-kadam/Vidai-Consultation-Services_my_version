@@ -1,0 +1,1353 @@
+Frontend:Medical-consultation-frontend:
+#src:
+1)app.js:
+// src/App.js
+
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Login from "./components/Login";
+import DoctorHome from "./components/DoctorHome";
+import AdminHome from "./components/AdminHome";
+import PatientCall from "./components/PatientCall";
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/doctor" element={<DoctorHome />} />
+        <Route path="/admin" element={<AdminHome />} />
+        <Route path="/patient/:roomId" element={<PatientCall />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;.
+#src/components:
+1)AdminHome.js:
+// src/components/AdminHome.js
+
+import React, { useState, useEffect } from "react";
+import "./VideoConsultation.css";
+
+export default function AdminHome() {
+  const token = localStorage.getItem("token");
+
+  const [clinics, setClinics] = useState([]);
+  const [newClinicName, setNewClinicName] = useState("");
+  const [newClinicId, setNewClinicId] = useState("");
+
+  const [newPatientName, setNewPatientName] = useState("");
+  const [newPatientId, setNewPatientId] = useState("");
+  const [selectedClinicForPatient, setSelectedClinicForPatient] = useState("");
+
+  useEffect(() => {
+    if (!token) window.location.href = "/";
+    fetchClinics();
+  }, [token]);
+
+  const fetchClinics = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/clinics/");
+      const data = await res.json();
+      setClinics(data);
+    } catch (err) {
+      console.error("Failed to load clinics", err);
+    }
+  };
+
+  const createClinic = async () => {
+    if (!newClinicName || !newClinicId) return alert("Enter clinic name and ID");
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/create-clinic/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: newClinicName, clinic_id: newClinicId }),
+      });
+
+      if (res.ok) {
+        alert("Clinic created");
+        setNewClinicName("");
+        setNewClinicId("");
+        fetchClinics();
+      } else {
+        const err = await res.json();
+        alert("Error: " + JSON.stringify(err));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const createPatient = async () => {
+    if (!selectedClinicForPatient || !newPatientName || !newPatientId)
+      return alert("Fill all patient fields");
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/create-patient/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          full_name: newPatientName,
+          patient_id: newPatientId,
+          clinic: selectedClinicForPatient,
+        }),
+      });
+
+      if (res.ok) {
+        alert("Patient created");
+        setNewPatientName("");
+        setNewPatientId("");
+      } else {
+        const err = await res.json();
+        alert("Error: " + JSON.stringify(err));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="container">
+      <h2>🔧 Admin Panel</h2>
+
+      <div className="create-section">
+        <h3>Create Clinic</h3>
+        <input
+          type="text"
+          placeholder="Clinic Name"
+          value={newClinicName}
+          onChange={(e) => setNewClinicName(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Clinic ID"
+          value={newClinicId}
+          onChange={(e) => setNewClinicId(e.target.value)}
+        />
+        <button className="btn success" onClick={createClinic}>
+          ➕ Create Clinic
+        </button>
+
+        <h3>Create Patient</h3>
+        <input
+          type="text"
+          placeholder="Patient Name"
+          value={newPatientName}
+          onChange={(e) => setNewPatientName(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Patient ID"
+          value={newPatientId}
+          onChange={(e) => setNewPatientId(e.target.value)}
+        />
+        <select
+          value={selectedClinicForPatient}
+          onChange={(e) => setSelectedClinicForPatient(e.target.value)}
+        >
+          <option value="">Select Clinic</option>
+          {clinics.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <button className="btn success" onClick={createPatient}>
+          ➕ Create Patient
+        </button>
+      </div>
+
+      <div className="notes-section">
+        <h3>Admin Notes</h3>
+        <p>✅ Clinics and patients can be created here.</p>
+        <p>🩺 Doctors cannot create clinics or patients.</p>
+        <p>🔐 Only admins have access to this panel.</p>
+      </div>
+    </div>
+  );
+}
+2)DoctorHome.js:
+// src/components/DoctorHome.js
+
+import React, { useRef, useState, useEffect, useCallback } from "react";
+import "./VideoConsultation.css";
+
+export default function DoctorHome() {
+  // ─── Refs ───────────────────────────────────────────────────────────────
+  const localVideoRef    = useRef(null);
+  const remoteVideoRef   = useRef(null);
+  const peerRef          = useRef(null);   // RTCPeerConnection
+  const socketRef        = useRef(null);   // WebSocket
+  const mediaStreamRef   = useRef(null);   // local MediaStream
+  const recorderRef      = useRef(null);   // MediaRecorder
+  const audioChunksRef   = useRef([]);     // recorded audio blobs
+  const iceQueueRef      = useRef([]);     // ICE candidates received before remote desc
+  const callActiveRef    = useRef(false);  // prevents duplicate startCall()
+  const offerSentRef     = useRef(false);  // prevents duplicate sendOffer()
+
+
+  // ─── MIME-type detection ────────────────────────────────────────────────
+  // MediaRecorder.isTypeSupported() is the only reliable way to know what
+  // the current browser actually accepts.  We probe a short list in order
+  // of preference and return the first hit.  An empty string is a valid
+  // fallback — it tells the browser to choose its own default codec.
+  const getSupportedMimeType = () => {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+      "audio/mp4",
+      "",                          // let the browser decide
+    ];
+    return candidates.find((t) => t === "" || MediaRecorder.isTypeSupported(t));
+  };
+
+  // ─── Token ──────────────────────────────────────────────────────────────
+  const token = localStorage.getItem("token");
+
+  // ─── UI state ───────────────────────────────────────────────────────────
+  const [micOn,           setMicOn]           = useState(true);
+  const [camOn,           setCamOn]           = useState(true);
+  const [notes,           setNotes]           = useState("");
+  const [recording,       setRecording]       = useState(false);
+  const [callStarted,     setCallStarted]     = useState(false);
+
+  // ─── Data state ─────────────────────────────────────────────────────────
+  const [clinics,         setClinics]         = useState([]);
+  const [patients,        setPatients]        = useState([]);
+  const [clinicId,        setClinicId]        = useState("");
+  const [patientId,       setPatientId]       = useState("");
+  const [consultationId,  setConsultationId]  = useState(null);
+  const [appointmentId,   setAppointmentId]   = useState(null);
+  const [roomId,          setRoomId]          = useState(null);
+  const [patientUrl,      setPatientUrl]      = useState("");
+
+  // ─── Auth guard ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) window.location.href = "/";
+  }, [token]);
+
+  // ─── Fetch clinics on mount ─────────────────────────────────────────────
+  useEffect(() => {
+    fetchClinics();
+  }, []);
+
+  // ─── Cleanup on unmount ─────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      cleanupCall();
+    };
+  }, []);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLINIC / PATIENT  helpers
+  // ═══════════════════════════════════════════════════════════════════════
+  const fetchClinics = async () => {
+    try {
+      const res  = await fetch("http://127.0.0.1:8000/api/clinics/");
+      const data = await res.json();
+      setClinics(data);
+    } catch (err) {
+      console.error("Failed to load clinics", err);
+    }
+  };
+
+  const loadPatients = async (id) => {
+    setClinicId(id);
+    setPatientId("");
+    setPatients([]);
+    if (!id) return;
+    try {
+      const res  = await fetch(`http://127.0.0.1:8000/api/patients/${id}/`);
+      const data = await res.json();
+      if (res.ok) setPatients(data);
+    } catch (err) {
+      console.error("Failed to load patients", err);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MIC / CAM  toggles
+  // ═══════════════════════════════════════════════════════════════════════
+  const toggleMic = () => {
+    if (!mediaStreamRef.current) return;
+    mediaStreamRef.current.getAudioTracks().forEach((t) => {
+      t.enabled = !t.enabled;
+      setMicOn(t.enabled);
+    });
+  };
+
+  const toggleCamera = () => {
+    if (!mediaStreamRef.current) return;
+    mediaStreamRef.current.getVideoTracks().forEach((t) => {
+      t.enabled = !t.enabled;
+      setCamOn(t.enabled);
+    });
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 1 — create consultation (backend)  →  then open the call
+  // ═══════════════════════════════════════════════════════════════════════
+  const startConsultation = async () => {
+    if (!clinicId || !patientId)
+      return alert("Select clinic and patient first");
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/start-consultation/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ clinic: clinicId, patient: patientId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) return alert("Failed: " + JSON.stringify(data));
+
+      // persist everything we need BEFORE touching WebRTC
+      setAppointmentId(data.appointment_id);
+      setConsultationId(data.consultation_id);
+      setRoomId(data.room_id);
+      setPatientUrl(data.patient_url);
+
+      // ── open the WebRTC call immediately (uses data.room_id directly) ──
+      await startCall(data.room_id, data.appointment_id);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to start consultation: " + err.message);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 2 — WebRTC + WebSocket setup   (doctor = offerer)
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // KEY DESIGN DECISIONS
+  //   • We do NOT send the offer on ws.onopen.  The patient may not have
+  //     joined yet.  Instead the patient sends a { type: "ready" } signal
+  //     when it connects, and we send the offer only then.
+  //   • callActiveRef guards against calling startCall() twice.
+  //   • offerSentRef guards against sending the offer twice (the WebSocket
+  //     room echoes "ready" back to the sender, so without this guard we
+  //     would createOffer() twice).
+  //   • iceQueueRef buffers any ICE candidates that arrive before we have
+  //     set a remote description (i.e. before the answer arrives).
+  //
+  // ═══════════════════════════════════════════════════════════════════════
+  const sendOffer = useCallback(async () => {
+    // ── FIX: only send one offer per call ──
+    if (offerSentRef.current) {
+      console.log("📤 Offer already sent — ignoring duplicate 'ready'");
+      return;
+    }
+    offerSentRef.current = true;
+
+    try {
+      const offer = await peerRef.current.createOffer();
+      await peerRef.current.setLocalDescription(offer);
+      console.log("📤 Sending offer");
+      socketRef.current.send(JSON.stringify({ type: "offer", offer }));
+    } catch (err) {
+      console.error("❌ Error creating offer:", err);
+    }
+  }, []);
+
+
+  const startCall = async (room, apptId) => {
+    // ── guard: only one active call at a time ──
+    if (callActiveRef.current) {
+      console.warn("⚠️ Call already active — ignoring duplicate startCall()");
+      return;
+    }
+    callActiveRef.current = true;
+    offerSentRef.current  = false;   // reset for this new call
+
+    try {
+      console.log("🎬 Starting call — room:", room);
+
+      // 1. grab local media
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      mediaStreamRef.current   = stream;
+      localVideoRef.current.srcObject = stream;
+      console.log("📹 Local stream ready");
+
+      // 2. create peer connection
+      peerRef.current = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+      });
+
+      // 3. add local tracks
+      stream.getTracks().forEach((t) => peerRef.current.addTrack(t, stream));
+
+      // 4. remote track → remote <video>
+      peerRef.current.ontrack = (e) => {
+        console.log("📡 Doctor received remote track:", e.track.kind);
+
+        const remoteVideo = remoteVideoRef.current;
+        if (!remoteVideo) return;
+
+        if (remoteVideo.srcObject !== e.streams[0]) {
+          remoteVideo.srcObject = e.streams[0];
+
+          // 🔴 CRITICAL: force playback
+          remoteVideo.onloadedmetadata = () => {
+            remoteVideo.play().catch(err =>
+              console.warn("Autoplay blocked (doctor)", err)
+            );
+          };
+        }
+      };
+
+
+      // 5. ICE candidate → send over WebSocket
+      peerRef.current.onicecandidate = (e) => {
+        if (
+          e.candidate &&
+          socketRef.current?.readyState === WebSocket.OPEN &&
+          peerRef.current.remoteDescription
+        ) {
+          socketRef.current.send(
+            JSON.stringify({ type: "ice", candidate: e.candidate })
+          );
+        }
+      };
+
+
+      // 6. logging helpers
+      peerRef.current.oniceconnectionstatechange = () =>
+        console.log("🧊 ICE state:", peerRef.current.iceConnectionState);
+      peerRef.current.onconnectionstatechange = () =>
+        console.log("🔌 Connection state:", peerRef.current.connectionState);
+
+      // 7. open WebSocket
+      if (!room || typeof room !== "string" || room.includes("<")) {
+        throw new Error("Invalid room ID: " + room);
+      }
+
+      const ws = new WebSocket(`ws://127.0.0.1:8000/ws/call/${room}/`);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("✅ WebSocket connected — waiting for patient 'ready' signal");
+        // do NOT send offer here — wait for patient "ready"
+      };
+
+     ws.onmessage = async (evt) => {
+  const msg = JSON.parse(evt.data);
+  console.log("📩 Doctor received:", msg.type);
+
+  switch (msg.type) {
+    case "ready":
+      console.log("👤 Patient is ready — sending offer");
+      await sendOffer();   // ← offerSentRef inside prevents duplicates
+      break;
+
+    case "answer":
+      console.log("✅ Received answer");
+      await peerRef.current.setRemoteDescription(new RTCSessionDescription(msg.answer));
+
+            // flush any ICE candidates we queued while waiting for the answer
+            for (const c of iceQueueRef.current) {
+              await peerRef.current.addIceCandidate(new RTCIceCandidate(c));
+            }
+            iceQueueRef.current = [];
+            console.log("✅ Flushed queued ICE candidates");
+            break;
+
+          // ICE candidate from patient
+          case "ice":
+            if (!msg.candidate) break;
+            if (peerRef.current.remoteDescription) {
+              await peerRef.current.addIceCandidate(
+                new RTCIceCandidate(msg.candidate)
+              );
+            } else {
+              // remote desc not set yet → queue it
+              iceQueueRef.current.push(msg.candidate);
+              console.log("⏳ Queued ICE candidate");
+            }
+            break;
+
+          default:
+            console.log("❓ Unknown message type:", msg.type);
+        }
+      };
+
+      ws.onerror  = (e) => console.error("❌ WebSocket error", e);
+      ws.onclose  = ()  => console.log("🔌 WebSocket closed");
+
+      setCallStarted(true);
+      console.log("✅ Call setup complete — waiting for patient");
+
+    } catch (err) {
+      console.error("❌ startCall failed:", err);
+      callActiveRef.current = false;
+      alert("Failed to start call: " + err.message);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RECORDING  (independent of call lifecycle)
+  // ═══════════════════════════════════════════════════════════════════════
+  const startRecording = () => {
+    if (!mediaStreamRef.current) {
+      alert("Call is not active. Start consultation first.");
+      return;
+    }
+    if (recorderRef.current?.state === "recording") return;
+
+    audioChunksRef.current = [];
+
+    // ── 1. Build an AUDIO-ONLY stream ──────────────────────────────────
+    // mediaStreamRef holds the full video+audio stream that is also wired
+    // into the RTCPeerConnection.  Passing that directly to MediaRecorder
+    // with an audio-only mimeType throws NotSupportedError on .start() in
+    // Chrome (and sometimes other browsers).  We pull out only the audio
+    // tracks into a brand-new MediaStream.  This also avoids any risk of
+    // the peer connection interfering with the tracks we are recording.
+    const audioTracks = mediaStreamRef.current.getAudioTracks();
+    if (audioTracks.length === 0) {
+      alert("No audio track available to record.");
+      return;
+    }
+    const audioOnlyStream = new MediaStream(audioTracks);
+
+    // ── 2. Pick a supported mimeType ───────────────────────────────────
+    const mimeType = getSupportedMimeType();
+    console.log("🎙️ MediaRecorder mimeType:", mimeType || "(browser default)");
+
+    // ── 3. Create MediaRecorder  →  wire callbacks  →  start ──────────
+    //   • First attempt: use the detected mimeType.
+    //   • Fallback: if .start() still throws (edge-case browsers), retry
+    //     with NO options at all and let the browser pick everything.
+    const wireCallbacks = (recorder) => {
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const actualType = recorder.mimeType || "audio/webm";
+        const blob       = new Blob(audioChunksRef.current, { type: actualType });
+        audioChunksRef.current = [];
+        await sendAudioToBackend(blob);
+      };
+    };
+
+    try {
+      recorderRef.current = new MediaRecorder(audioOnlyStream, { mimeType });
+      wireCallbacks(recorderRef.current);
+      recorderRef.current.start();                // ← may still throw
+    } catch (firstErr) {
+      console.warn("⚠️ MediaRecorder failed with mimeType, retrying with no options:", firstErr);
+      try {
+        recorderRef.current = new MediaRecorder(audioOnlyStream); // no options
+        wireCallbacks(recorderRef.current);
+        recorderRef.current.start();
+      } catch (secondErr) {
+        console.error("❌ MediaRecorder failed even with no options:", secondErr);
+        alert("Your browser cannot record audio. Please try Chrome or Firefox.");
+        return;
+      }
+    }
+
+    setRecording(true);
+    console.log("🎙️ Recording started — actual mimeType:", recorderRef.current.mimeType);
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+    setRecording(false);
+    console.log("⏸️ Recording stopped");
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SPEECH → TEXT
+  // ═══════════════════════════════════════════════════════════════════════
+  const sendAudioToBackend = async (blob) => {
+    if (!appointmentId) {
+      console.warn("⚠️ No appointmentId — skipping transcription");
+      return;
+    }
+    // Map the recorder's actual mimeType → a file extension so Django /
+    // ffmpeg on the backend know what container they are receiving.
+    const extMap = {
+      "audio/webm":            ".webm",
+      "audio/webm;codecs=opus":".webm",
+      "audio/ogg":             ".ogg",
+      "audio/ogg;codecs=opus": ".ogg",
+      "audio/mp4":             ".mp4",
+      "audio/mpeg":            ".mp3",
+    };
+    const ext      = extMap[blob.type] || ".webm";   // default if unknown
+    const filename = "recording" + ext;
+
+    const fd = new FormData();
+    fd.append("audio",          blob, filename);     // 3rd arg = filename
+    fd.append("appointment_id", appointmentId);
+
+    try {
+      const res  = await fetch("http://127.0.0.1:8000/api/speech-to-text/", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.text) {
+        setNotes((prev) => prev + " " + data.text);
+        console.log("✅ Transcription:", data.text);
+      }
+    } catch (err) {
+      console.error("❌ Transcription error:", err);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // END CALL  +  SAVE NOTES
+  // ═══════════════════════════════════════════════════════════════════════
+  const cleanupCall = () => {
+    if (recorderRef.current  && recorderRef.current.state !== "inactive")
+      recorderRef.current.stop();
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    peerRef.current?.close();
+    socketRef.current?.close();
+    callActiveRef.current = false;
+    offerSentRef.current  = false;
+    iceQueueRef.current   = [];
+  };
+
+  const endCall = async () => {
+    cleanupCall();
+    setCallStarted(false);
+    setRecording(false);
+
+    if (consultationId) {
+      try {
+        await fetch("http://127.0.0.1:8000/api/end-consultation/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ consultation_id: consultationId }),
+        });
+      } catch (err) {
+        console.error("end-consultation API error", err);
+      }
+    }
+    alert("Consultation ended");
+    window.location.reload();
+  };
+
+  const saveNotes = async () => {
+    if (!consultationId) return alert("No active consultation");
+    try {
+      await fetch("http://127.0.0.1:8000/api/save-notes/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ consultation: consultationId, notes }),
+      });
+      alert("Notes saved");
+    } catch (err) {
+      console.error("save-notes error", err);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════════
+  return (
+    <div className="container">
+      <h2>🩺 Doctor Console</h2>
+
+      {/* ── video ── */}
+      <div className="video-section">
+        <video ref={localVideoRef}  autoPlay playsInline className="video-box" />
+        <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
+      </div>
+
+      {/* ── mic / cam ── */}
+      <div className="controls">
+        <button className="btn secondary" onClick={toggleMic}>
+          {micOn ? "🎤 Mute" : "🔇 Unmute"}
+        </button>
+        <button className="btn secondary" onClick={toggleCamera}>
+          {camOn ? "📷 Camera Off" : "🚫 Camera On"}
+        </button>
+      </div>
+
+      {/* ── clinic / patient dropdowns + start consultation ── */}
+      <div className="dropdowns">
+        <select value={clinicId} onChange={(e) => loadPatients(e.target.value)}>
+          <option value="">Select Clinic</option>
+          {clinics.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
+        <select
+          value={patientId}
+          onChange={(e) => setPatientId(e.target.value)}
+          disabled={!patients.length}
+        >
+          <option value="">Select Patient</option>
+          {patients.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.full_name} ({p.patient_id})
+            </option>
+          ))}
+        </select>
+
+        <button
+          className="btn primary"
+          onClick={startConsultation}
+          disabled={callStarted}   // disable once call is live
+        >
+          🟢 Start Consultation
+        </button>
+      </div>
+
+      {/* ── patient URL (shown after consultation created) ── */}
+      {patientUrl && (
+        <div className="patient-url-box">
+          <p><strong>Patient Join URL:</strong></p>
+          <input type="text" value={patientUrl} readOnly />
+        </div>
+      )}
+
+      {/* ── dictation + end call ── */}
+      <div className="controls">
+        {!recording ? (
+          <button
+            className="btn primary"
+            onClick={startRecording}
+            disabled={!callStarted}   // can only record after call is live
+          >
+            🎙️ Start Dictation
+          </button>
+        ) : (
+          <button className="btn warning" onClick={stopRecording}>
+            ⏸ Stop Dictation
+          </button>
+        )}
+
+        <button className="btn danger" onClick={endCall} disabled={!callStarted}>
+          🔴 End Call
+        </button>
+      </div>
+
+      {/* ── notes ── */}
+      <div className="notes-section">
+        <h3>Consultation Notes</h3>
+        <textarea
+          rows="6"
+          placeholder="Notes will appear here automatically..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+        <button className="btn success" onClick={saveNotes}>
+          💾 Save Notes
+        </button>
+      </div>
+    </div>
+  );
+}
+3)login.css:
+/* src/components/Login.css */
+
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #0f172a, #020617);
+}
+
+.login-box {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 400px;
+  width: 100%;
+}
+
+.login-box h2 {
+  color: #f8fafc;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.login-box input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(2, 6, 23, 0.7);
+  color: #f8fafc;
+  font-size: 15px;
+}
+
+.login-box button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.login-box button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.4);
+}
+
+.error {
+  color: #f87171;
+  text-align: center;
+  margin-top: 16px;
+}
+4)login.js:
+// src/components/Login.js
+
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import "./Login.css";
+
+export default function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/login/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError("Invalid credentials");
+        return;
+      }
+
+      // Save token
+      localStorage.setItem("token", data.access);
+
+      // ✅ ROLE-BASED REDIRECT
+      if (data.is_superuser) {
+        navigate("/admin");
+      } else {
+        navigate("/doctor");
+      }
+
+    } catch (err) {
+      setError("Server error");
+    }
+  };
+
+
+  return (
+    <div className="login-container">
+      <div className="login-box">
+        <h2>🩺 Medical Consultation System</h2>
+        <input
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyPress={(e) => e.key === "Enter" && handleLogin()}
+        />
+        <button onClick={handleLogin}>Login</button>
+        {error && <p className="error">{error}</p>}
+      </div>
+    </div>
+  );
+}
+5)PatientCall.js:
+// src/components/PatientCall.js
+
+import React, { useRef, useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
+import "./VideoConsultation.css";
+
+export default function PatientCall() {
+  const { roomId } = useParams();
+
+  // ─── Refs ─────────────────────────────────────────────────────────────
+  const localVideoRef     = useRef(null);
+  const remoteVideoRef    = useRef(null);
+  const peerRef           = useRef(null);   // RTCPeerConnection
+  const socketRef         = useRef(null);   // WebSocket
+  const iceQueueRef       = useRef([]);     // ICE candidates before remote desc
+
+  // ─── UI state ───────────────────────────────────────────────────────────
+  const [connected, setConnected] = useState(false);
+  const [micOn,     setMicOn]     = useState(true);
+  const [camOn,     setCamOn]     = useState(true);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MOUNT  →  join call   |   UNMOUNT  →  cleanup
+  // ═══════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    joinCall();
+
+    return () => {
+      // tear down everything when the component unmounts
+      if (peerRef.current)  peerRef.current.close();
+      if (socketRef.current) socketRef.current.close();
+      if (localVideoRef.current?.srcObject) {
+        localVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // JOIN CALL
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // FLOW
+  //   1. Get local media → show in local <video>
+  //   2. Create RTCPeerConnection + attach local tracks
+  //   3. Open WebSocket → send { type: "ready" } so doctor knows we are here
+  //   4. Wait for "offer"  → setRemoteDescription → createAnswer →
+  //      setLocalDescription → send "answer"
+  //   5. Exchange ICE candidates (queue any that arrive before remote desc)
+  //
+  // ═══════════════════════════════════════════════════════════════════════
+  const joinCall = async () => {
+    try {
+      console.log("👤 Patient joining room:", roomId);
+
+      // 1. local media
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      localVideoRef.current.srcObject = stream;
+      console.log("📹 Patient local stream ready");
+
+      // 2. peer connection
+      peerRef.current = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+        ],
+      });
+
+      // add local tracks
+      stream.getTracks().forEach((t) => peerRef.current.addTrack(t, stream));
+
+      // remote track → remote <video>
+      peerRef.current.ontrack = (e) => {
+        console.log("📡 Patient received remote track:", e.track.kind);
+
+        const remoteVideo = remoteVideoRef.current;
+        if (!remoteVideo) return;
+
+        if (remoteVideo.srcObject !== e.streams[0]) {
+          remoteVideo.srcObject = e.streams[0];
+
+          remoteVideo.onloadedmetadata = () => {
+            remoteVideo.play().catch(err =>
+              console.warn("Autoplay blocked (patient)", err)
+            );
+          };
+        }
+      };
+
+      // ICE candidate → send over WebSocket
+      peerRef.current.onicecandidate = (e) => {
+        if (!e.candidate) return;
+        if (peerRef.current.remoteDescription) {
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ type: "ice", candidate: e.candidate }));
+          }
+        } else {
+          iceQueueRef.current.push(e.candidate);
+          console.log("⏳ Patient queued ICE candidate");
+        }
+      };
+
+      // logging
+      peerRef.current.oniceconnectionstatechange = () =>
+        console.log("🧊 Patient ICE state:", peerRef.current.iceConnectionState);
+      peerRef.current.onconnectionstatechange = () =>
+        console.log("🔌 Patient connection state:", peerRef.current.connectionState);
+
+      // 3. WebSocket
+      if (!roomId) {
+        alert("Invalid consultation link");
+        return;
+      }
+
+      const ws = new WebSocket(
+        `ws://127.0.0.1:8000/ws/call/${roomId}/`
+      );
+
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log("✅ Patient WebSocket open — sending 'ready'");
+        setConnected(true);
+
+        // ← THIS is the key addition: tell the doctor we are here
+        ws.send(JSON.stringify({ type: "ready" }));
+      };
+
+      // 4 & 5.  handle incoming messages
+      ws.onmessage = async (evt) => {
+        const msg = JSON.parse(evt.data);
+        console.log("📩 Patient received:", msg.type);
+
+        switch (msg.type) {
+
+          // ── FIX 1: ignore "ready" echoes that the room broadcasts back ──
+          case "ready":
+            console.log("📩 Patient ignoring 'ready' echo");
+            break;
+
+          // doctor sent us an offer
+          case "offer":
+            // ── FIX 2: the correct guard is "stable".  That is the state
+            //    we are in BEFORE we have processed any offer.  The old
+            //    check (!== "have-local-offer") was inverted and rejected
+            //    every legitimate offer.
+            if (peerRef.current.signalingState !== "stable") {
+              console.warn("⚠️ Ignoring offer — state is:", peerRef.current.signalingState);
+              break;
+            }
+
+            await peerRef.current.setRemoteDescription(
+              new RTCSessionDescription(msg.offer)
+            );
+            console.log("✅ Patient remote description (offer) set");
+
+            const answer = await peerRef.current.createAnswer();
+            await peerRef.current.setLocalDescription(answer);
+            console.log("📤 Patient sending answer");
+            ws.send(JSON.stringify({ type: "answer", answer }));
+
+            // flush queued ICE candidates now that remote desc is set
+            for (const c of iceQueueRef.current) {
+              await peerRef.current.addIceCandidate(new RTCIceCandidate(c));
+            }
+            iceQueueRef.current = [];
+            console.log("✅ Patient flushed queued ICE candidates");
+            break;
+
+          // ICE candidate from doctor
+          case "ice":
+            if (!msg.candidate) break;
+            if (peerRef.current.remoteDescription) {
+              await peerRef.current.addIceCandidate(
+                new RTCIceCandidate(msg.candidate)
+              );
+            } else {
+              iceQueueRef.current.push(msg.candidate);
+              console.log("⏳ Patient queued ICE candidate");
+            }
+            break;
+
+          default:
+            console.log("❓ Patient — unknown message type:", msg.type);
+        }
+      };
+
+      ws.onerror = (e) => console.error("❌ Patient WebSocket error", e);
+      ws.onclose = () => {
+        console.log("🔌 Patient WebSocket closed");
+        setConnected(false);
+      };
+
+    } catch (err) {
+      console.error("❌ Patient joinCall failed:", err);
+      alert("Failed to join call: " + err.message);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MIC / CAM  toggles
+  // ═══════════════════════════════════════════════════════════════════════
+  const toggleMic = () => {
+    if (!localVideoRef.current?.srcObject) return;
+    localVideoRef.current.srcObject.getAudioTracks().forEach((t) => {
+      t.enabled = !t.enabled;
+      setMicOn(t.enabled);
+    });
+  };
+
+  const toggleCamera = () => {
+    if (!localVideoRef.current?.srcObject) return;
+    localVideoRef.current.srcObject.getVideoTracks().forEach((t) => {
+      t.enabled = !t.enabled;
+      setCamOn(t.enabled);
+    });
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════════
+  return (
+    <div className="container">
+      <h2>👤 Patient View</h2>
+      <p style={{ color: "#94a3b8" }}>Room: {roomId}</p>
+
+      {/* connection badge */}
+      {!connected ? (
+        <p style={{ color: "#fbbf24" }}>⏳ Connecting…</p>
+      ) : (
+        <p style={{ color: "#4ade80" }}>✅ Connected</p>
+      )}
+
+      {/* ── video ── */}
+      <div className="video-section">
+        <video ref={localVideoRef}  autoPlay playsInline className="video-box" />
+        <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
+      </div>
+
+      {/* ── mic / cam ── */}
+      <div className="controls">
+        <button className="btn secondary" onClick={toggleMic}>
+          {micOn ? "🎤 Mute" : "🔇 Unmute"}
+        </button>
+        <button className="btn secondary" onClick={toggleCamera}>
+          {camOn ? "📷 Camera Off" : "🚫 Camera On"}
+        </button>
+      </div>
+    </div>
+  );
+}
+7)videoconsultation.css:
+/* src/components/VideoConsultation.css */
+
+/* ========================== GLOBAL CONTAINER ========================== */
+.container {
+  min-height: 100vh;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  padding: 28px;
+  background: linear-gradient(135deg, #0f172a, #020617);
+  color: #f8fafc;
+}
+
+/* Headings */
+h2 {
+  font-size: 28px;
+  margin-bottom: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+h3 {
+  font-size: 20px;
+  margin-bottom: 12px;
+  color: #e5e7eb;
+}
+
+/* ========================== CARD SECTIONS ========================== */
+.create-section,
+.dropdowns,
+.notes-section {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  padding: 20px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ========================== VIDEO SECTION ========================== */
+.video-section {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.video-box {
+  flex: 1;
+  min-width: 280px;
+  height: 280px;
+  background: radial-gradient(circle at top, #1e293b, #020617);
+  border-radius: 18px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  object-fit: cover;
+}
+
+/* ========================== INPUTS & SELECT ========================== */
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  margin-top: 8px;
+  margin-bottom: 14px;
+  font-size: 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(2, 6, 23, 0.7);
+  color: #f8fafc;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3);
+  background: rgba(2, 6, 23, 0.9);
+}
+
+select option {
+  background: #020617;
+  color: #f8fafc;
+}
+
+/* ========================== CONTROLS ========================== */
+.controls {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+/* ========================== BUTTONS ========================== */
+.btn {
+  padding: 12px 22px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.25s ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.primary {
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+  color: white;
+}
+
+.secondary {
+  background: linear-gradient(135deg, #64748b, #94a3b8);
+  color: white;
+}
+
+.warning {
+  background: linear-gradient(135deg, #f59e0b, #fde68a);
+  color: #1f2937;
+}
+
+.danger {
+  background: linear-gradient(135deg, #dc2626, #f87171);
+  color: white;
+}
+
+.success {
+  background: linear-gradient(135deg, #16a34a, #4ade80);
+  color: white;
+  width: fit-content;
+}
+
+/* ========================== NOTES SECTION ========================== */
+.notes-section textarea {
+  min-height: 140px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* ========================== PATIENT URL BOX ========================== */
+.patient-url-box {
+  background: rgba(56, 189, 248, 0.1);
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.patient-url-box input {
+  margin-top: 8px;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+/* ========================== DROPDOWNS LAYOUT ========================== */
+.dropdowns {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.dropdowns button {
+  height: 46px;
+}
+
+/* ========================== CREATE SECTION LAYOUT ========================== */
+.create-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.create-section h3 {
+  grid-column: 1 / -1;
+}
+
+/* ========================== RESPONSIVE ========================== */
+@media (max-width: 900px) {
+  .dropdowns {
+    grid-template-columns: 1fr;
+  }
+
+  .create-section {
+    grid-template-columns: 1fr;
+  }
+
+  .video-section {
+    flex-direction: column;
+  }
+}
