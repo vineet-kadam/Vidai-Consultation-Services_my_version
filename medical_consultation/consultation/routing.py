@@ -1,10 +1,6 @@
-"""
-consultation/routing.py
-"""
-
 from django.urls import re_path
-from .consumers import CallConsumer
+from . import consumers
 
 websocket_urlpatterns = [
-    re_path(r"ws/call/(?P<room>[^/]+)/?$", CallConsumer.as_asgi()),
+    re_path(r'ws/call/(?P<room>[^/]+)/$', consumers.CallConsumer.as_asgi()),
 ]

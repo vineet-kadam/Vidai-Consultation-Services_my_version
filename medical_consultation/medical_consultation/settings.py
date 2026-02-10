@@ -74,8 +74,12 @@ ASGI_APPLICATION = 'medical_consultation.asgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'medical_consultation_db',
+        'USER': 'postgres',  # default PostgreSQL user
+        'PASSWORD': 'Mit@1724',  # password you set during installation
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
@@ -115,3 +119,5 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=5),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 }
+
+
