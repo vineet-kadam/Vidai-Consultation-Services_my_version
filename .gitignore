@@ -1,21 +1,42 @@
-# Virtual environments
-env/
-venv/
-ENV/
-
-# Python cache
+# ===== Python / Django =====
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.sqlite3
+*.log
+.env
+.env.*
+*.pem
 
-# Django
-db.sqlite3
+# Django static & media
+staticfiles/
 media/
 
-# OS files
+# Virtual environment
+venv/
+.venv/
+env/
+
+# ===== Node / Vite / React =====
+node_modules/
+dist/
+build/
+.vite/
+
+# ===== OS / Editor =====
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
+
+# ===== Testing =====
+.coverage
+htmlcov/
+
+# ===== Secrets =====
+.env.local
+.env.development
+.env.production
+
+# ===== Misc =====
+*.swp
+*.swo
