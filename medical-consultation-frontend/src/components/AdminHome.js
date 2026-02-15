@@ -54,7 +54,7 @@ export default function AdminHome() {
   // ═══════════════════════════════════════════════════════════════════════
   const fetchClinics = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/clinics/");
+      const res = await fetch("localhost/api/clinics/");
       const data = await res.json();
       setClinics(data);
     } catch (err) {
@@ -64,7 +64,7 @@ export default function AdminHome() {
 
   const fetchPatients = async (clinicId) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/patients/${clinicId}/`);
+      const res = await fetch(`localhost/api/patients/${clinicId}/`);
       const data = await res.json();
       setPatients(data);
     } catch (err) {
@@ -84,7 +84,7 @@ export default function AdminHome() {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/create-clinic/", {
+      const res = await fetch("localhost/api/create-clinic/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -125,7 +125,7 @@ export default function AdminHome() {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/create-patient/", {
+      const res = await fetch("localhost/api/create-patient/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

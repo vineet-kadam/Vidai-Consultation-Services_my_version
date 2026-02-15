@@ -25,10 +25,8 @@ export default function Login() {
         return;
       }
 
-      // Save token
       localStorage.setItem("token", data.access);
 
-      // ✅ ROLE-BASED REDIRECT
       if (data.is_superuser) {
         navigate("/admin");
       } else {
@@ -39,7 +37,6 @@ export default function Login() {
       setError("Server error");
     }
   };
-
 
   return (
     <div className="login-container">
