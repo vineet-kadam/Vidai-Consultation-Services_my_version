@@ -230,28 +230,3 @@ Meeting
 
 ---
 
-## 8. Files Summary
-
-```
-backend/
-  consultation/
-    models.py         ← UserProfile, DoctorAvailability, Meeting, Clinic, Patient
-    views.py          ← All API logic
-    serializers.py    ← JSON converters
-    urls.py           ← URL routing
-    admin.py          ← Django admin registrations
-    consumers.py      ← UNCHANGED (WebRTC + Deepgram STT)
-    routing.py        ← UNCHANGED (WebSocket URL patterns)
-  medical_consultation/
-    urls.py           ← Updated project-level URL config
-    asgi.py           ← UNCHANGED
-
-frontend/src/
-  App.js                         ← 4 routes: /, /doctor, /admin, /patient, /patient/:roomId
-  components/
-    Login.js / Login.css         ← Routes by role
-    PatientHome.js / .css        ← NEW full patient dashboard
-    DoctorHome.js / DoctorHome.css ← Redesigned with calendar
-    AdminHome.js / AdminHome.css ← Updated with user creation
-    PatientCall.js / VideoConsultation.css ← UNCHANGED
-```
