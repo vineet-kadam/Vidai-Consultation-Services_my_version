@@ -1,21 +1,30 @@
 // src/components/Login.js
+// Login page — same page for Admin, Doctor, and Patient.
+// After login, the server tells us the user's role and we navigate to the right page.
 
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Login.css";
 
+const API = "http://localhost:8000";
+
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error,    setError]    = useState("");
   const navigate = useNavigate();
 
   const handleLogin = async () => {
+    if (!username || !password) {
+      setError("Please enter username and password");
+      return;
+    }
+
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/login/", {
-        method: "POST",
+      const res  = await fetch(`${API}/api/login/`, {
+        method : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body   : JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
@@ -25,16 +34,25 @@ export default function Login() {
         return;
       }
 
-      localStorage.setItem("token", data.access);
+      // Save token and user info to localStorage
+      localStorage.setItem("token",     data.access);
+      localStorage.setItem("role",      data.role);
+      localStorage.setItem("username",  data.username);
+      localStorage.setItem("full_name", data.full_name);
 
-      if (data.is_superuser) {
+      // Navigate based on role returned by the backend
+      if (data.role === "admin" || data.is_superuser) {
         navigate("/admin");
-      } else {
+      } else if (data.role === "doctor") {
         navigate("/doctor");
+      } else if (data.role === "patient") {
+        navigate("/patient");
+      } else {
+        navigate("/doctor"); // fallback
       }
 
     } catch (err) {
-      setError("Server error");
+      setError("Server error — make sure the backend is running");
     }
   };
 
@@ -42,10 +60,12 @@ export default function Login() {
     <div className="login-container">
       <div className="login-box">
         <h2>🩺 Medical Consultation System</h2>
+
         <input
           placeholder="Username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
         />
         <input
           type="password"
@@ -53,8 +73,11 @@ export default function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && handleLogin()}
+          autoComplete="current-password"
         />
+
         <button onClick={handleLogin}>Login</button>
+
         {error && <p className="error">{error}</p>}
       </div>
     </div>

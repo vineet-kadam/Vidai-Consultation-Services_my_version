@@ -4,17 +4,7 @@ consultation/consumers.py
 Two consumers:
   1. CallConsumer  – WebRTC signalling
   2. STTConsumer   – TWO separate Deepgram connections (doctor + patient)
-                     each with its own server-side KeepAlive every 5 s
-                     and auto-reconnect on timeout (1011) or any drop.
-
-Wire protocol  React → Django:
-  Binary: 0x01 + PCM-16LE  →  doctor audio
-          0x02 + PCM-16LE  →  patient audio
-
-Wire protocol  Django → React:
-  { "type": "stt_ready" }
-  { "type": "transcript", "text", "is_final", "speaker": "Doctor"|"Patient" }
-  { "type": "stt_error",  "message" }
+                     with improved timeout handling and error recovery
 """
 
 import asyncio
@@ -82,7 +72,7 @@ class CallConsumer(AsyncWebsocketConsumer):
 
 
 # =============================================================================
-# STT — two parallel Deepgram connections
+# STT — two parallel Deepgram connections with improved error handling
 # =============================================================================
 
 class STTConsumer(AsyncWebsocketConsumer):
@@ -97,11 +87,14 @@ class STTConsumer(AsyncWebsocketConsumer):
         self.buf_patient = []
         self.dg_ready    = False
         self._tasks      = []
+        self._closing    = False
 
         self._tasks.append(asyncio.ensure_future(self._init_deepgram()))
 
     async def disconnect(self, close_code):
         print(f"❌ [STT] disconnected  code={close_code}")
+        self._closing = True
+        
         for t in self._tasks:
             if not t.done():
                 t.cancel()
@@ -136,24 +129,43 @@ class STTConsumer(AsyncWebsocketConsumer):
             elif len(self.buf_patient) < 120:
                 self.buf_patient.append(audio)
 
-    # ── Open one Deepgram WS ──────────────────────────────────────────────────
+    # ── Open one Deepgram WS with timeout ─────────────────────────────────────
 
     async def _open_deepgram(self):
+        """Open Deepgram WebSocket with 15 second timeout"""
         auth = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
-        for kwarg in (_HEADERS_KWARG, "additional_headers", "extra_headers"):
-            try:
-                return await websockets.connect(DEEPGRAM_URI, **{kwarg: auth})
-            except TypeError:
-                continue
-            except Exception as exc:
-                raise exc
-        raise RuntimeError("No compatible websockets header kwarg found")
+        
+        # Try with timeout
+        try:
+            for kwarg in (_HEADERS_KWARG, "additional_headers", "extra_headers"):
+                try:
+                    # FIXED: Add explicit timeout of 15 seconds
+                    ws = await asyncio.wait_for(
+                        websockets.connect(
+                            DEEPGRAM_URI, 
+                            **{kwarg: auth},
+                            ping_interval=None,  # Disable auto-ping, we handle KeepAlive manually
+                            close_timeout=2
+                        ),
+                        timeout=15.0
+                    )
+                    return ws
+                except TypeError:
+                    continue
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"Deepgram connection timed out after 15s (kwarg={kwarg})")
+                except Exception as exc:
+                    raise exc
+            raise RuntimeError("No compatible websockets header kwarg found")
+        except Exception as e:
+            print(f"❌ [STT] Deepgram connection failed: {e}")
+            raise
 
     # ── KeepAlive loop — runs independently per connection ───────────────────
 
     async def _keepalive_loop(self, label):
         """Send Deepgram KeepAlive every 5 s to prevent idle timeout (10 s)."""
-        while True:
+        while not self._closing:
             await asyncio.sleep(5)
             ws = self.dg_doctor if label == "Doctor" else self.dg_patient
             if ws is None:
@@ -166,11 +178,55 @@ class STTConsumer(AsyncWebsocketConsumer):
     # ── Initialise both connections ───────────────────────────────────────────
 
     async def _init_deepgram(self):
+        """
+        FIXED: Better error handling and timeout management
+        """
         try:
-            self.dg_doctor, self.dg_patient = await asyncio.gather(
-                self._open_deepgram(),
-                self._open_deepgram(),
-            )
+            print("🔌 [STT] Connecting to Deepgram (2 connections)...")
+            
+            # Open both connections with individual timeouts
+            try:
+                self.dg_doctor = await asyncio.wait_for(
+                    self._open_deepgram(),
+                    timeout=20.0
+                )
+                print("✅ [STT] Doctor connection established")
+            except asyncio.TimeoutError:
+                print("❌ [STT] Doctor connection timeout after 20s")
+                await self.send(json.dumps({
+                    "type": "stt_error",
+                    "message": "Deepgram doctor connection timed out. Check your API key and internet connection."
+                }))
+                return
+            except Exception as e:
+                print(f"❌ [STT] Doctor connection failed: {e}")
+                await self.send(json.dumps({
+                    "type": "stt_error",
+                    "message": f"Deepgram doctor connection failed: {str(e)}"
+                }))
+                return
+            
+            try:
+                self.dg_patient = await asyncio.wait_for(
+                    self._open_deepgram(),
+                    timeout=20.0
+                )
+                print("✅ [STT] Patient connection established")
+            except asyncio.TimeoutError:
+                print("❌ [STT] Patient connection timeout after 20s")
+                await self.send(json.dumps({
+                    "type": "stt_error",
+                    "message": "Deepgram patient connection timed out. Check your API key and internet connection."
+                }))
+                return
+            except Exception as e:
+                print(f"❌ [STT] Patient connection failed: {e}")
+                await self.send(json.dumps({
+                    "type": "stt_error",
+                    "message": f"Deepgram patient connection failed: {str(e)}"
+                }))
+                return
+
             self.dg_ready = True
             print("✅ [STT] Both Deepgram connections open")
 
@@ -213,7 +269,7 @@ class STTConsumer(AsyncWebsocketConsumer):
         Stream Deepgram results → React.
         On any disconnect (including 1011 timeout), wait 1 s then reconnect.
         """
-        while True:
+        while not self._closing:
             ws = self.dg_doctor if label == "Doctor" else self.dg_patient
             if ws is None:
                 await asyncio.sleep(0.5)
@@ -221,6 +277,9 @@ class STTConsumer(AsyncWebsocketConsumer):
 
             try:
                 async for raw in ws:
+                    if self._closing:
+                        break
+                        
                     try:
                         data = json.loads(raw)
                     except json.JSONDecodeError:
@@ -249,22 +308,34 @@ class STTConsumer(AsyncWebsocketConsumer):
                         )
 
                 # Loop ended normally → reconnect
+                if self._closing:
+                    break
                 raise ConnectionResetError("stream closed")
 
             except asyncio.CancelledError:
                 return   # clean shutdown
 
             except Exception as exc:
+                if self._closing:
+                    break
+                    
                 code = str(exc)
                 print(f"⚠️  [STT] [{label}] dropped ({code[:60]}) — reconnecting in 1 s…")
                 await asyncio.sleep(1)
+                
                 try:
-                    new_ws = await self._open_deepgram()
+                    new_ws = await asyncio.wait_for(
+                        self._open_deepgram(),
+                        timeout=20.0
+                    )
                     if label == "Doctor":
                         self.dg_doctor  = new_ws
                     else:
                         self.dg_patient = new_ws
                     print(f"✅ [STT] [{label}] reconnected")
+                except asyncio.TimeoutError:
+                    print(f"❌ [STT] [{label}] reconnect timeout — retrying in 3 s")
+                    await asyncio.sleep(3)
                 except Exception as re:
                     print(f"❌ [STT] [{label}] reconnect failed: {re} — retrying in 3 s")
                     await asyncio.sleep(3)
