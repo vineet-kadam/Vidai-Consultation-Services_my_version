@@ -1,13 +1,11 @@
 # consultation/serializers.py
 #
-# Serializers convert Django model objects → JSON (for API responses)
-# and validate incoming JSON → Python data (for API requests).
-# Think of them as the "translator" between your database and React.
+# Serializers convert Django model objects -> JSON (for API responses)
+# and validate incoming JSON -> Python data (for API requests).
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Clinic, Meeting, UserProfile, DoctorAvailability, Patient
-
+from .models import Clinic, Meeting, UserProfile, DoctorAvailability
 
 # =============================================================================
 # USER & PROFILE
@@ -16,7 +14,7 @@ from .models import Clinic, Meeting, UserProfile, DoctorAvailability, Patient
 class UserProfileSerializer(serializers.ModelSerializer):
     """Serializes the UserProfile extra fields (role, DOB, sex, mobile, etc.)"""
     class Meta:
-        model  = UserProfile
+        model = UserProfile
         fields = ["role", "date_of_birth", "sex", "mobile", "department", "clinic", "photo"]
 
 
@@ -28,7 +26,7 @@ class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
 
     class Meta:
-        model  = User
+        model = User
         fields = ["id", "username", "first_name", "last_name", "email", "profile"]
 
 
@@ -38,7 +36,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ClinicSerializer(serializers.ModelSerializer):
     class Meta:
-        model  = Clinic
+        model = Clinic
         fields = "__all__"
 
 
@@ -49,25 +47,16 @@ class ClinicSerializer(serializers.ModelSerializer):
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     """
     Used when fetching or setting a doctor's working hours.
-    Example response:
-    {
-      "id": 1,
-      "doctor": 5,
-      "clinic": 2,
-      "day_of_week": 0,       ← Monday
-      "start_time": "09:00",
-      "end_time": "17:00"
-    }
     """
     day_label = serializers.CharField(source="get_day_of_week_display", read_only=True)
 
     class Meta:
-        model  = DoctorAvailability
+        model = DoctorAvailability
         fields = ["id", "doctor", "clinic", "day_of_week", "day_label", "start_time", "end_time"]
 
 
 # =============================================================================
-# MEETING  — the main appointment serializer
+# MEETING — the main appointment serializer
 # =============================================================================
 
 class MeetingSerializer(serializers.ModelSerializer):
@@ -82,12 +71,12 @@ class MeetingSerializer(serializers.ModelSerializer):
     clinic_name  = serializers.SerializerMethodField()
 
     # Human-readable versions of choice fields
-    meeting_type_label      = serializers.CharField(source="get_meeting_type_display",      read_only=True)
-    appointment_type_label  = serializers.CharField(source="get_appointment_type_display",  read_only=True)
-    status_label            = serializers.CharField(source="get_status_display",             read_only=True)
+    meeting_type_label     = serializers.CharField(source="get_meeting_type_display", read_only=True)
+    appointment_type_label = serializers.CharField(source="get_appointment_type_display", read_only=True)
+    status_label           = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
-        model  = Meeting
+        model = Meeting
         fields = [
             "meeting_id",
             "room_id",
@@ -136,7 +125,7 @@ class MeetingCreateSerializer(serializers.ModelSerializer):
     The patient or admin sends this data to POST /api/book-appointment/
     """
     class Meta:
-        model  = Meeting
+        model = Meeting
         fields = [
             "meeting_type",
             "appointment_type",
@@ -149,13 +138,3 @@ class MeetingCreateSerializer(serializers.ModelSerializer):
             "department",
             "remark",
         ]
-
-
-# =============================================================================
-# LEGACY — kept for backward compatibility with old Appointment/Consultation
-# =============================================================================
-
-class PatientSerializer(serializers.ModelSerializer):
-    class Meta:
-        model  = Patient
-        fields = "__all__"

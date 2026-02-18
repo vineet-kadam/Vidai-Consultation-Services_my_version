@@ -142,6 +142,7 @@ export default function AdminHome() {
             <select value={newRole} onChange={e => setNewRole(e.target.value)}>
               <option value="patient">Patient</option>
               <option value="doctor">Doctor</option>
+              <option value="sales">Sales</option>
             </select>
             <input placeholder="Username *"   value={newUsername}  onChange={e => setNewUsername(e.target.value)}  required />
             <input type="password" placeholder="Password *" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />

@@ -1,41 +1,57 @@
-# consultation/urls.py
-#
-# This file maps URL paths to view functions.
-# All URLs here are prefixed with /api/ (set in medical_consultation/urls.py)
-# So "login/" here becomes "/api/login/" in the browser.
+# consultation/urls.py -- UPDATED
+# Added: /doctor/slots/<doctor_id>/ for availability slot picker
 
 from django.urls import path
-from . import views
+from .views import (
+    LoginView,
+    ProfileView,
+    UserCreateView,
+    PatientListView,
+    SalesListView,
+    ClinicListCreateView,
+    DoctorListView,
+    DoctorAvailabilityView,
+    DoctorAvailabilityCheckView,
+    DoctorAvailableSlotsView,        # NEW
+    MeetingBookView,
+    DoctorAppointmentListView,
+    PatientAppointmentListView,
+    SalesAppointmentListView,
+    MeetingListView,
+    MeetingDetailView,
+    MeetingStartView,
+    MeetingEndView,
+    MeetingTranscriptAppendView,
+)
 
 urlpatterns = [
+    # Auth
+    path("login/",   LoginView.as_view(),   name="login"),
+    path("profile/", ProfileView.as_view(), name="profile"),
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    path("login/",                              views.login_view),
-    path("profile/",                            views.get_profile),
+    # User management
+    path("users/create/",   UserCreateView.as_view(),  name="user-create"),
+    path("users/patients/", PatientListView.as_view(), name="patient-list"),
+    path("users/sales/",    SalesListView.as_view(),   name="sales-list"),
 
-    # ── Admin — user management ───────────────────────────────────────────────
-    path("create-user/",                        views.create_user),         # create doctor or patient
-    path("create-clinic/",                      views.create_clinic),
+    # Clinics
+    path("clinics/", ClinicListCreateView.as_view(), name="clinics"),
 
-    # ── Clinics (public) ─────────────────────────────────────────────────────
-    path("clinics/",                            views.get_clinics),
+    # Doctors
+    path("doctors/",                         DoctorListView.as_view(),              name="doctor-list"),
+    path("doctor/availability/<int:doctor_id>/", DoctorAvailabilityView.as_view(),  name="doctor-availability"),
+    path("doctor/set-availability/",         DoctorAvailabilityView.as_view(),      name="doctor-set-availability"),
+    path("doctor/available/<int:doctor_id>/",    DoctorAvailabilityCheckView.as_view(), name="doctor-available"),
+    path("doctor/slots/<int:doctor_id>/",    DoctorAvailableSlotsView.as_view(),    name="doctor-slots"),   # NEW
 
-    # ── Doctors ──────────────────────────────────────────────────────────────
-    path("doctors/",                            views.get_doctors),                     # list doctors
-    path("doctor/availability/<int:doctor_id>/",views.get_doctor_availability),         # get hours
-    path("doctor/set-availability/",            views.set_doctor_availability),         # set hours
-    path("doctor/available/<int:doctor_id>/",   views.check_doctor_available),          # is online now?
-    path("doctor/appointments/",               views.get_doctor_appointments),          # doctor's calendar
-
-    # ── Patients ─────────────────────────────────────────────────────────────
-    path("list-patients/",                      views.list_patients),                   # all patients
-    path("patients/<int:clinic_id>/",           views.get_patients_by_clinic),          # legacy
-
-    # ── Appointments / Meetings ───────────────────────────────────────────────
-    path("book-appointment/",                   views.book_appointment),                # patient books
-    path("patient/appointments/",              views.get_patient_appointments),         # patient's calendar
-    path("meeting/<int:meeting_id>/",           views.get_meeting),                     # single meeting
-    path("meeting/start/",                      views.start_meeting),                   # start call
-    path("meeting/end/",                        views.end_meeting),                     # end call
-    path("append-transcript/",                  views.append_transcript),               # STT line append
+    # Appointments / meetings
+    path("book-appointment/",        MeetingBookView.as_view(),              name="book-appointment"),
+    path("doctor/appointments/",     DoctorAppointmentListView.as_view(),    name="doctor-appointments"),
+    path("patient/appointments/",    PatientAppointmentListView.as_view(),   name="patient-appointments"),
+    path("meeting/sales/",           SalesAppointmentListView.as_view(),     name="sales-appointments"),
+    path("meetings/",                MeetingListView.as_view(),              name="meeting-list"),
+    path("meeting/<int:meeting_id>/",MeetingDetailView.as_view(),            name="meeting-detail"),
+    path("meeting/start/",           MeetingStartView.as_view(),             name="meeting-start"),
+    path("meeting/end/",             MeetingEndView.as_view(),               name="meeting-end"),
+    path("append-transcript/",       MeetingTranscriptAppendView.as_view(),  name="append-transcript"),
 ]

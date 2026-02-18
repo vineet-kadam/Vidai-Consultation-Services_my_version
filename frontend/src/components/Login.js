@@ -47,7 +47,9 @@ export default function Login() {
         navigate("/doctor");
       } else if (data.role === "patient") {
         navigate("/patient");
-      } else {
+      }else if (data.role === "sales")        
+        navigate("/sales"); 
+      else {
         navigate("/doctor"); // fallback
       }
 
