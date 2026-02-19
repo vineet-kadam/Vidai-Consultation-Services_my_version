@@ -1,19 +1,15 @@
+# models stub
 # consultation/models.py -- UPDATED
-# Changes:
-#  - Patient (legacy) model is marked for removal — it was never used
-#    in the Meeting flow. You can safely run:
-#      python manage.py migrate --run-syncdb
-#    after removing it, then drop the table.
-#  - All other models unchanged.
+# Key change: DoctorAvailability.clinic is now null=True, blank=True
+# This allows sales reps to have availability rows without a clinic FK.
+# After updating this file run:
+#   python manage.py makemigrations
+#   python manage.py migrate
 
 import uuid
 from django.db import models
 from django.contrib.auth.models import User
 
-
-# =============================================================================
-# 1. USER PROFILE
-# =============================================================================
 
 class UserProfile(models.Model):
     ROLE_CHOICES = [
@@ -44,10 +40,6 @@ class UserProfile(models.Model):
         return f"{self.user.get_full_name() or self.user.username} ({self.role})"
 
 
-# =============================================================================
-# 2. CLINIC
-# =============================================================================
-
 class Clinic(models.Model):
     clinic_id = models.CharField(max_length=50, unique=True)
     name      = models.CharField(max_length=100)
@@ -56,43 +48,47 @@ class Clinic(models.Model):
         return f"{self.name} ({self.clinic_id})"
 
 
-# =============================================================================
-# 3. DOCTOR AVAILABILITY
-# =============================================================================
-
 class DoctorAvailability(models.Model):
+    """
+    Shared availability table for doctors AND sales reps.
+    - Doctor rows:  clinic is set  (doctor works at a specific clinic)
+    - Sales rows:   clinic is NULL (sales meetings are not clinic-bound)
+    """
     DAY_CHOICES = [
         (0, "Monday"), (1, "Tuesday"), (2, "Wednesday"),
         (3, "Thursday"), (4, "Friday"), (5, "Saturday"), (6, "Sunday"),
     ]
 
-    doctor      = models.ForeignKey(User,   on_delete=models.CASCADE, related_name="availability")
-    clinic      = models.ForeignKey(Clinic, on_delete=models.CASCADE, related_name="doctor_hours")
+    doctor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="availability")
+    # CHANGED: null=True, blank=True so sales reps can omit clinic
+    clinic = models.ForeignKey(
+        Clinic, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="doctor_hours",
+    )
     day_of_week = models.IntegerField(choices=DAY_CHOICES)
     start_time  = models.TimeField()
     end_time    = models.TimeField()
 
     class Meta:
+        # SQL treats NULL as distinct in unique constraints, so a sales rep
+        # gets one row per day (clinic=NULL) and doctors get one per (clinic, day).
         unique_together = ("doctor", "clinic", "day_of_week")
         ordering        = ["day_of_week", "start_time"]
 
     def __str__(self):
+        clinic_str = self.clinic.name if self.clinic else "Sales (no clinic)"
         return (
-            f"Dr.{self.doctor.get_full_name()} @ {self.clinic.name} "
+            f"{self.doctor.get_full_name()} @ {clinic_str} "
             f"— {self.get_day_of_week_display()} {self.start_time}–{self.end_time}"
         )
 
 
-# =============================================================================
-# 4. MEETING
-# =============================================================================
-
 class Meeting(models.Model):
-
     MEETING_TYPE_CHOICES = [
-        ("CONSULT", "Consultation"),
-        ("SALES",   "Sales"),
-        ("DEMO",    "Demo"),
+        ("CONSULT",       "Consultation"),
+        ("SALES_MEETING", "Sales Meeting"),
+        ("SALES",         "Sales"),
+        ("DEMO",          "Demo"),
     ]
     APPOINTMENT_TYPE_CHOICES = [
         ("consultation",     "Consultation"),
@@ -100,6 +96,7 @@ class Meeting(models.Model):
         ("pathology",        "Pathology"),
         ("ultrasound",       "Ultrasound"),
         ("surgery",          "Surgery"),
+        ("sales_meeting",    "Sales Meeting"),  # NEW
     ]
     STATUS_CHOICES = [
         ("scheduled", "Scheduled"),
@@ -116,9 +113,9 @@ class Meeting(models.Model):
     duration           = models.IntegerField(default=30)
     participants       = models.JSONField(default=list)
 
-    patient  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="patient_meetings")
-    doctor   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="doctor_meetings")
-    sales    = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="sales_meetings")
+    patient  = models.ForeignKey(User,   on_delete=models.SET_NULL, null=True, blank=True, related_name="patient_meetings")
+    doctor   = models.ForeignKey(User,   on_delete=models.SET_NULL, null=True, blank=True, related_name="doctor_meetings")
+    sales    = models.ForeignKey(User,   on_delete=models.SET_NULL, null=True, blank=True, related_name="sales_meetings")
     clinic   = models.ForeignKey(Clinic, on_delete=models.SET_NULL, null=True, blank=True, related_name="meetings")
 
     appointment_reason = models.CharField(max_length=300, blank=True)
@@ -136,7 +133,8 @@ class Meeting(models.Model):
 
     def __str__(self):
         patient_name = self.patient.get_full_name() if self.patient else "Unknown"
-        doctor_name  = self.doctor.get_full_name()  if self.doctor  else "Unknown"
+        if self.appointment_type == "sales_meeting":
+            sales_name = self.sales.get_full_name() if self.sales else "Unknown"
+            return f"SalesMeeting {self.meeting_id}: {patient_name} ↔ {sales_name} @ {self.scheduled_time}"
+        doctor_name = self.doctor.get_full_name() if self.doctor else "Unknown"
         return f"Meeting {self.meeting_id}: {patient_name} with Dr.{doctor_name} @ {self.scheduled_time}"
-
-

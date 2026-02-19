@@ -338,3 +338,16 @@
   .patient-main { padding: 20px; }
   .card-grid { grid-template-columns: 1fr; }
 }
+.book-type-badge {
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 4px 0 6px;
+}
+
+.sales-meeting-badge {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}

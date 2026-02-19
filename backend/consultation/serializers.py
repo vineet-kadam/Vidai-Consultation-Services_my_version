@@ -1,11 +1,16 @@
 # consultation/serializers.py
 #
-# Serializers convert Django model objects -> JSON (for API responses)
-# and validate incoming JSON -> Python data (for API requests).
+# FIXED — Bug 1:
+#   MeetingSerializer was missing `sales` and `sales_name` fields.
+#   Frontend (SalesHome.js, PatientHome.js) accesses appt.sales_name
+#   and appt.sales on every sales-meeting card / today row.
+#   Without these fields every sales meeting showed "Sales Rep" or "—"
+#   regardless of which rep was assigned.
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from .models import Clinic, Meeting, UserProfile, DoctorAvailability
+
 
 # =============================================================================
 # USER & PROFILE
@@ -46,7 +51,7 @@ class ClinicSerializer(serializers.ModelSerializer):
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     """
-    Used when fetching or setting a doctor's working hours.
+    Used when fetching or setting a doctor's / sales rep's working hours.
     """
     day_label = serializers.CharField(source="get_day_of_week_display", read_only=True)
 
@@ -62,18 +67,20 @@ class DoctorAvailabilitySerializer(serializers.ModelSerializer):
 class MeetingSerializer(serializers.ModelSerializer):
     """
     Used for listing appointments on the calendar and showing the appointment card.
-    Includes nested doctor and patient names for easy display in React.
+    Includes nested doctor, patient, and sales names for easy display in React.
     """
 
     # Read-only computed fields for display (not stored separately)
     doctor_name  = serializers.SerializerMethodField()
     patient_name = serializers.SerializerMethodField()
     clinic_name  = serializers.SerializerMethodField()
+    # FIX: was missing — SalesHome.js and PatientHome.js both access appt.sales_name
+    sales_name   = serializers.SerializerMethodField()
 
     # Human-readable versions of choice fields
-    meeting_type_label     = serializers.CharField(source="get_meeting_type_display", read_only=True)
+    meeting_type_label     = serializers.CharField(source="get_meeting_type_display",     read_only=True)
     appointment_type_label = serializers.CharField(source="get_appointment_type_display", read_only=True)
-    status_label           = serializers.CharField(source="get_status_display", read_only=True)
+    status_label           = serializers.CharField(source="get_status_display",           read_only=True)
 
     class Meta:
         model = Meeting
@@ -93,6 +100,9 @@ class MeetingSerializer(serializers.ModelSerializer):
             "doctor_name",
             "clinic",
             "clinic_name",
+            # FIX: added sales + sales_name ↓
+            "sales",
+            "sales_name",
             "appointment_reason",
             "department",
             "remark",
@@ -116,6 +126,12 @@ class MeetingSerializer(serializers.ModelSerializer):
     def get_clinic_name(self, obj):
         if obj.clinic:
             return obj.clinic.name
+        return ""
+
+    # FIX: new method — resolves sales rep's display name
+    def get_sales_name(self, obj):
+        if obj.sales:
+            return obj.sales.get_full_name() or obj.sales.username
         return ""
 
 

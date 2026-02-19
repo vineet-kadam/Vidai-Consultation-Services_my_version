@@ -1,9 +1,9 @@
-// src/components/PatientHome.js -- FIXED
-// Bug fixes:
-//  1. Time selection uses doctor's actual availability slots (not free picker)
-//  2. Pass role=patient in navigation URL to fix meeting room naming
-//  3. "Too early" check preserved
-//  4. Multi-meeting calendar nav + 12h time throughout
+// src/components/PatientHome.js -- UPDATED with Time Grid
+// Changes:
+//  • Replaced dropdown time selector with clickable time grid (15-minute intervals)
+//  • Shows all times from 00:00 to 23:45 in a responsive grid layout
+//  • Available slots are highlighted, unavailable are dimmed
+//  • Selected time is shown with green checkmark
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
@@ -39,6 +39,9 @@ const isTimeToJoin = (scheduledTime) => {
   return diffMin <= 15;
 };
 
+const SALES_MEETING_TYPE = "sales_meeting";
+const isSalesMtgType = (t) => t === SALES_MEETING_TYPE;
+
 export default function PatientHome() {
   const navigate = useNavigate();
   const token    = localStorage.getItem("token");
@@ -54,14 +57,15 @@ export default function PatientHome() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [doctorAvailable, setDoctorAvailable] = useState(null);
 
-  // Booking form
+  // ── Booking form state ──────────────────────────────────────────────────
   const [clinics,        setClinics]        = useState([]);
   const [doctors,        setDoctors]        = useState([]);
   const [salesUsers,     setSalesUsers]     = useState([]);
+
+  const [bookType,       setBookType]       = useState("consultation");
   const [bookClinic,     setBookClinic]     = useState("");
   const [bookDoctor,     setBookDoctor]     = useState("");
   const [bookSales,      setBookSales]      = useState("");
-  const [bookType,       setBookType]       = useState("consultation");
   const [bookReason,     setBookReason]     = useState("");
   const [bookDate,       setBookDate]       = useState("");
   const [bookTime,       setBookTime]       = useState("");
@@ -70,10 +74,11 @@ export default function PatientHome() {
   const [bookDuration,   setBookDuration]   = useState(30);
   const [bookMsg,        setBookMsg]        = useState("");
 
-  // Availability slots for the chosen doctor+date
-  const [availSlots,     setAvailSlots]     = useState([]);   // ["09:00","09:30",…]
-  const [slotsLoading,   setSlotsLoading]   = useState(false);
-  const [noSlotsMsg,     setNoSlotsMsg]     = useState("");
+  const [availSlots,   setAvailSlots]   = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [noSlotsMsg,   setNoSlotsMsg]   = useState("");
+
+  const isSalesMeeting = isSalesMtgType(bookType);
 
   useEffect(() => { if (!token) navigate("/"); }, [token, navigate]);
 
@@ -87,23 +92,27 @@ export default function PatientHome() {
   }, [token]);
 
   useEffect(() => { loadAppointments(); }, [loadAppointments]);
-
   useEffect(() => {
     fetch(`${API}/api/clinics/`).then(r => r.json()).then(setClinics).catch(console.error);
   }, []);
-
   useEffect(() => {
     if (!bookClinic) { setDoctors([]); return; }
     fetch(`${API}/api/doctors/?clinic=${bookClinic}`).then(r => r.json()).then(setDoctors).catch(console.error);
   }, [bookClinic]);
-
   useEffect(() => {
     fetch(`${API}/api/users/sales/`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json()).then(setSalesUsers).catch(() => setSalesUsers([]));
   }, [token]);
 
-  // Fetch available slots whenever doctor + date (+ optionally clinic) changes
   useEffect(() => {
+    setBookClinic(""); setBookDoctor(""); setBookSales("");
+    setBookDate(""); setBookTime("");
+    setAvailSlots([]); setNoSlotsMsg(""); setBookMsg("");
+  }, [bookType]);
+
+  // Fetch slots for CONSULTATION
+  useEffect(() => {
+    if (isSalesMeeting) return;
     setAvailSlots([]);
     setBookTime("");
     setNoSlotsMsg("");
@@ -118,18 +127,40 @@ export default function PatientHome() {
       .then(data => {
         const slots = data.slots || [];
         setAvailSlots(slots);
-        if (slots.length === 0) {
+        if (!slots.length) {
           setNoSlotsMsg("⚠ The selected doctor has no availability on this date. Please choose another date.");
         } else {
-          setBookTime(slots[0]);
           setNoSlotsMsg("");
         }
       })
       .catch(() => setNoSlotsMsg("⚠ Could not load availability. Please try again."))
       .finally(() => setSlotsLoading(false));
-  }, [bookDoctor, bookDate, bookClinic]);
+  }, [bookDoctor, bookDate, bookClinic, isSalesMeeting]);
 
-  // Multi-meeting calendar helpers
+  // Fetch slots for SALES MEETING
+  useEffect(() => {
+    if (!isSalesMeeting) return;
+    setAvailSlots([]);
+    setBookTime("");
+    setNoSlotsMsg("");
+    if (!bookSales || !bookDate) return;
+
+    setSlotsLoading(true);
+    fetch(`${API}/api/sales/slots/${bookSales}/?date=${bookDate}`)
+      .then(r => r.json())
+      .then(data => {
+        const slots = data.slots || [];
+        setAvailSlots(slots);
+        if (!slots.length) {
+          setNoSlotsMsg("⚠ This sales representative has no availability on this date. Please choose another date.");
+        } else {
+          setNoSlotsMsg("");
+        }
+      })
+      .catch(() => setNoSlotsMsg("⚠ Could not load availability. Please try again."))
+      .finally(() => setSlotsLoading(false));
+  }, [bookSales, bookDate, isSalesMeeting]);
+
   const appointmentsOnDate = (dateStr) =>
     appointments.filter(a => a.scheduled_time?.startsWith(dateStr));
 
@@ -138,6 +169,7 @@ export default function PatientHome() {
 
   useEffect(() => {
     if (!selected?.doctor) { setDoctorAvailable(null); return; }
+    if (selected.appointment_type === SALES_MEETING_TYPE) { setDoctorAvailable(true); return; }
     fetch(`${API}/api/doctor/available/${selected.doctor}/`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -149,7 +181,7 @@ export default function PatientHome() {
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
   const todayAppointments = appointments.filter(a => a.scheduled_time?.startsWith(todayStr()));
 
-  // Calendar
+  // Calendar render
   const renderCalendar = () => {
     const firstDay    = new Date(calYear, calMonth, 1).getDay();
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
@@ -192,10 +224,10 @@ export default function PatientHome() {
     const isEnded = appt.status === "ended";
     const total   = selectedAppts.length;
     const canJoinTime = isTimeToJoin(appt.scheduled_time);
+    const isSalesMtg  = appt.appointment_type === SALES_MEETING_TYPE;
 
-    // FIX: pass role=patient in URL
     const handleStart = async () => {
-      if (!doctorAvailable) return;
+      if (!isSalesMtg && !doctorAvailable) return;
       try {
         const res = await fetch(`${API}/api/meeting/start/`, {
           method: "POST",
@@ -207,6 +239,8 @@ export default function PatientHome() {
         navigate(`/room/${data.room_id}?meeting_id=${data.meeting_id}&role=patient`);
       } catch (e) { alert("Error starting appointment"); }
     };
+
+    const canJoin = isSalesMtg ? true : (doctorAvailable === true);
 
     return (
       <div className="appt-card-overlay" onClick={() => { setSelectedDate(null); setSelectedIndex(0); }}>
@@ -222,22 +256,41 @@ export default function PatientHome() {
           )}
 
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <h3>📋 Appointment Details</h3>
+            <h3>{isSalesMtg ? "💼 Sales Meeting" : "📋 Appointment Details"}</h3>
             {isEnded && <span className="badge-ended">COMPLETED</span>}
+            {isSalesMtg && !isEnded && (
+              <span style={{ background:"rgba(245,158,11,0.15)", color:"#f59e0b", padding:"3px 10px", borderRadius:20, fontSize:"0.76rem", fontWeight:700 }}>
+                SALES MEETING
+              </span>
+            )}
           </div>
+
           <div className="card-grid">
             <div className="card-field"><label>1. First Name</label> <span>{appt.patient_name?.split(" ")[0] || "—"}</span></div>
             <div className="card-field"><label>2. Last Name</label>  <span>{appt.patient_name?.split(" ").slice(1).join(" ") || "—"}</span></div>
-            <div className="card-field"><label>3. Sex at Birth</label><span>{pp.sex || "—"}</span></div>
-            <div className="card-field"><label>4. Mobile No.</label> <span>{pp.mobile || "—"}</span></div>
-            <div className="card-field"><label>5. Date of Birth</label><span>{pp.dob || "—"}</span></div>
-            <div className="card-field"><label>6. Email ID</label>   <span>{pp.email || "—"}</span></div>
-            <div className="card-field"><label>7. Department</label> <span>{appt.department || "—"}</span></div>
-            <div className="card-field"><label>8. Doctor</label>     <span>{appt.doctor_name || "—"}</span></div>
-            <div className="card-field"><label>9. Reason</label>     <span>{appt.appointment_reason || "—"}</span></div>
-            <div className="card-field"><label>10. Date</label>      <span>{appt.scheduled_time?.split("T")[0] || "—"}</span></div>
-            <div className="card-field"><label>11. Time</label>      <span>{timeFrom(appt.scheduled_time)}</span></div>
-            <div className="card-field"><label>12. Remark</label>    <span>{appt.remark || "—"}</span></div>
+            {isSalesMtg ? (
+              <>
+                <div className="card-field"><label>3. Sales Rep</label>    <span>{appt.sales_name || "—"}</span></div>
+                <div className="card-field"><label>4. Mobile No.</label>   <span>{pp.mobile || "—"}</span></div>
+              </>
+            ) : (
+              <>
+                <div className="card-field"><label>3. Sex at Birth</label> <span>{pp.sex || "—"}</span></div>
+                <div className="card-field"><label>4. Mobile No.</label>   <span>{pp.mobile || "—"}</span></div>
+              </>
+            )}
+            <div className="card-field"><label>5. Date of Birth</label>   <span>{pp.dob || "—"}</span></div>
+            <div className="card-field"><label>6. Email ID</label>         <span>{pp.email || "—"}</span></div>
+            {!isSalesMtg && (
+              <>
+                <div className="card-field"><label>7. Department</label>   <span>{appt.department || "—"}</span></div>
+                <div className="card-field"><label>8. Doctor</label>       <span>{appt.doctor_name ? `Dr. ${appt.doctor_name}` : "—"}</span></div>
+              </>
+            )}
+            <div className="card-field"><label>{isSalesMtg ? "7." : "9."} Reason</label>    <span>{appt.appointment_reason || "—"}</span></div>
+            <div className="card-field"><label>{isSalesMtg ? "8." : "10."} Date</label>     <span>{appt.scheduled_time?.split("T")[0] || "—"}</span></div>
+            <div className="card-field"><label>{isSalesMtg ? "9." : "11."} Time</label>     <span>{timeFrom(appt.scheduled_time)}</span></div>
+            <div className="card-field"><label>{isSalesMtg ? "10." : "12."} Remark</label>  <span>{appt.remark || "—"}</span></div>
           </div>
 
           {isEnded ? (
@@ -254,10 +307,14 @@ export default function PatientHome() {
                   ⏰ Meeting starts at {timeFrom(appt.scheduled_time)}
                 </p>
               )}
-              {doctorAvailable === null && <span className="avail-checking">Checking doctor availability…</span>}
-              {doctorAvailable === false && <button className="btn-start-grey" disabled>🚫 Doctor Not Available Right Now</button>}
-              {doctorAvailable === true && canJoinTime  && <button className="btn-start-green" onClick={handleStart}>📹 Start Appointment</button>}
-              {doctorAvailable === true && !canJoinTime && <button className="btn-start-grey"  disabled>⏰ Too Early to Join</button>}
+              {!isSalesMtg && doctorAvailable === null && (
+                <span className="avail-checking">Checking doctor availability…</span>
+              )}
+              {canJoin && canJoinTime  && <button className="btn-start-green" onClick={handleStart}>📹 Start Appointment</button>}
+              {canJoin && !canJoinTime && <button className="btn-start-grey"  disabled>⏰ Too Early to Join</button>}
+              {!isSalesMtg && doctorAvailable === false && (
+                <button className="btn-start-grey" disabled>🚫 Doctor Not Available Right Now</button>
+              )}
             </div>
           )}
         </div>
@@ -265,30 +322,117 @@ export default function PatientHome() {
     );
   };
 
-  // Booking
+  // Time Grid Renderer (NEW)
+  const renderTimeGrid = () => {
+    const allTimeSlots = [];
+    for (let h = 0; h < 24; h++) {
+      for (const m of ["00", "15", "30", "45"]) {
+        const time24 = `${String(h).padStart(2, "0")}:${m}`;
+        allTimeSlots.push(time24);
+      }
+    }
+    
+    return (
+      <div style={{marginTop:8}}>
+        <div style={{
+          display:"grid", 
+          gridTemplateColumns:"repeat(auto-fill, minmax(90px, 1fr))", 
+          gap:8, 
+          maxHeight:400, 
+          overflowY:"auto",
+          padding:4,
+          background:"#0a0f1a",
+          borderRadius:8,
+          border:"1px solid #334155",
+        }}>
+          {allTimeSlots.map(slot => {
+            const isAvailable = availSlots.includes(slot);
+            const isSelected = bookTime === slot;
+            return (
+              <button
+                key={slot}
+                type="button"
+                disabled={!isAvailable}
+                onClick={() => setBookTime(slot)}
+                style={{
+                  padding:"10px 8px",
+                  borderRadius:6,
+                  fontSize:"0.82rem",
+                  transition:"all 0.15s",
+                  background: isSelected 
+                    ? "linear-gradient(135deg,#10b981,#34d399)" 
+                    : isAvailable 
+                      ? "#1e293b" 
+                      : "#0f172a",
+                  color: isSelected 
+                    ? "#fff" 
+                    : isAvailable 
+                      ? "#f8fafc" 
+                      : "#475569",
+                  border: isSelected 
+                    ? "2px solid #10b981" 
+                    : isAvailable 
+                      ? "1px solid #475569" 
+                      : "1px solid #1e293b",
+                  cursor: isAvailable ? "pointer" : "not-allowed",
+                  fontWeight: isSelected ? 700 : 600,
+                  opacity: isAvailable ? 1 : 0.4,
+                }}
+              >
+                {to12h(slot)}
+              </button>
+            );
+          })}
+        </div>
+        {bookTime && (
+          <p style={{fontSize:13,color:"#4ade80",marginTop:10,marginBottom:0}}>
+            ✓ Selected: {to12h(bookTime)}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Booking form submit
   const handleBook = async (e) => {
     e.preventDefault();
     setBookMsg("");
-    if (!bookClinic || !bookDoctor || !bookDate || !bookTime) {
-      setBookMsg("⚠ Please fill all required fields");
-      return;
+
+    if (isSalesMeeting) {
+      if (!bookSales || !bookDate || !bookTime) {
+        setBookMsg("⚠ Please select a sales representative, date, and time.");
+        return;
+      }
+    } else {
+      if (!bookClinic || !bookDoctor || !bookDate || !bookTime) {
+        setBookMsg("⚠ Please fill all required fields.");
+        return;
+      }
     }
+
     if (noSlotsMsg) {
       setBookMsg("⚠ No available slots on selected date. Please choose a different date.");
       return;
     }
+
     try {
       const body = {
-        clinic            : parseInt(bookClinic),
-        doctor            : parseInt(bookDoctor),
         appointment_type  : bookType,
         appointment_reason: bookReason,
-        scheduled_time    : `${bookDate}T${bookTime}:00`,  // bookTime is already "HH:MM" from slots
+        scheduled_time    : `${bookDate}T${bookTime}:00`,
         duration          : parseInt(bookDuration),
-        department        : bookDepartment,
         remark            : bookRemark,
       };
-      if (bookSales) body.sales_id = parseInt(bookSales);
+
+      if (isSalesMeeting) {
+        body.sales_id = parseInt(bookSales);
+      } else {
+        body.clinic     = parseInt(bookClinic);
+        body.doctor     = parseInt(bookDoctor);
+        body.department = bookDepartment;
+        if (bookSales) body.sales_id = parseInt(bookSales);
+      }
+
       const res = await fetch(`${API}/api/book-appointment/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -296,10 +440,14 @@ export default function PatientHome() {
       });
       const data = await res.json();
       if (!res.ok) { setBookMsg(`⚠ ${data.error || "Booking failed"}`); return; }
-      setBookMsg("✅ Appointment booked successfully!" + (bookSales ? " Sales rep included." : ""));
+
+      setBookMsg(`✅ ${isSalesMeeting ? "Sales meeting" : "Appointment"} booked successfully!`);
       loadAppointments();
-      setBookClinic(""); setBookDoctor(""); setBookSales(""); setBookReason("");
-      setBookDate(""); setBookTime(""); setBookRemark(""); setBookDepartment("");
+
+      setBookType("consultation");
+      setBookClinic(""); setBookDoctor(""); setBookSales("");
+      setBookReason(""); setBookDate(""); setBookTime("");
+      setBookRemark(""); setBookDepartment("");
       setAvailSlots([]); setNoSlotsMsg("");
     } catch (e) { setBookMsg("⚠ Server error"); }
   };
@@ -332,12 +480,6 @@ export default function PatientHome() {
             <h2>📝 Book an Appointment</h2>
             <form className="book-form" onSubmit={handleBook}>
 
-              <label>Select Clinic *</label>
-              <select value={bookClinic} onChange={e => { setBookClinic(e.target.value); setBookDoctor(""); }} required>
-                <option value="">— Choose clinic —</option>
-                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-
               <label>Appointment Type *</label>
               <select value={bookType} onChange={e => setBookType(e.target.value)}>
                 <option value="consultation">Consultation</option>
@@ -345,59 +487,88 @@ export default function PatientHome() {
                 <option value="pathology">Pathology</option>
                 <option value="ultrasound">Ultrasound</option>
                 <option value="surgery">Surgery</option>
+                <option value="sales_meeting">Sales Meeting</option>
               </select>
 
-              <label>Select Doctor *</label>
-              <select value={bookDoctor} onChange={e => setBookDoctor(e.target.value)} disabled={!bookClinic} required>
-                <option value="">— Choose doctor —</option>
-                {doctors.map(d => (
-                  <option key={d.id} value={d.id}>Dr. {d.full_name}{d.department ? ` (${d.department})` : ""}</option>
-                ))}
-              </select>
+              {isSalesMeeting && (
+                <>
+                  <div className="book-type-badge sales-meeting-badge">
+                    💼 Sales Meeting — No clinic or doctor required
+                  </div>
 
-              <label>Assign Sales Rep <span style={{ fontWeight:400, color:"#94a3b8" }}>(optional)</span></label>
-              <select value={bookSales} onChange={e => setBookSales(e.target.value)}>
-                <option value="">— No sales rep —</option>
-                {salesUsers.map(s => (
-                  <option key={s.id} value={s.id}>{s.full_name || s.username}{s.clinic ? ` · ${s.clinic}` : ""}</option>
-                ))}
-              </select>
-              {bookSales && (
-                <p style={{ fontSize:12, color:"#f59e0b", margin:"-6px 0 6px" }}>
-                  ⚠ Sales rep will be included in the meeting room.
-                </p>
+                  <label>Select Sales Representative *</label>
+                  <select value={bookSales} onChange={e => setBookSales(e.target.value)} required>
+                    <option value="">— Choose a sales rep —</option>
+                    {salesUsers.map(s => (
+                      <option key={s.id} value={s.id}>{s.full_name || s.username}{s.clinic ? ` · ${s.clinic}` : ""}</option>
+                    ))}
+                  </select>
+                </>
               )}
 
-              <label>Appointment Reason</label>
-              <input type="text" placeholder="e.g. Chest pain, routine checkup"
-                value={bookReason} onChange={e => setBookReason(e.target.value)} />
+              {!isSalesMeeting && (
+                <>
+                  <label>Select Clinic *</label>
+                  <select value={bookClinic} onChange={e => { setBookClinic(e.target.value); setBookDoctor(""); }} required>
+                    <option value="">— Choose clinic —</option>
+                    {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
 
-              <label>Department</label>
-              <input type="text" placeholder="e.g. Cardiology"
-                value={bookDepartment} onChange={e => setBookDepartment(e.target.value)} />
+                  <label>Select Doctor *</label>
+                  <select value={bookDoctor} onChange={e => setBookDoctor(e.target.value)} disabled={!bookClinic} required>
+                    <option value="">— Choose doctor —</option>
+                    {doctors.map(d => (
+                      <option key={d.id} value={d.id}>Dr. {d.full_name}{d.department ? ` (${d.department})` : ""}</option>
+                    ))}
+                  </select>
+
+                  <label>Assign Sales Rep <span style={{ fontWeight:400, color:"#94a3b8" }}>(optional)</span></label>
+                  <select value={bookSales} onChange={e => setBookSales(e.target.value)}>
+                    <option value="">— No sales rep —</option>
+                    {salesUsers.map(s => (
+                      <option key={s.id} value={s.id}>{s.full_name || s.username}{s.clinic ? ` · ${s.clinic}` : ""}</option>
+                    ))}
+                  </select>
+                  {bookSales && (
+                    <p style={{ fontSize:12, color:"#f59e0b", margin:"-6px 0 6px" }}>
+                      ⚠ Sales rep will be included in the meeting room.
+                    </p>
+                  )}
+
+                  <label>Department</label>
+                  <input type="text" placeholder="e.g. Cardiology"
+                    value={bookDepartment} onChange={e => setBookDepartment(e.target.value)} />
+                </>
+              )}
+
+              <label>Reason</label>
+              <input type="text" placeholder="e.g. Chest pain, routine checkup, product discussion"
+                value={bookReason} onChange={e => setBookReason(e.target.value)} />
 
               <label>Date *</label>
               <input type="date" value={bookDate} min={todayStr()}
                 onChange={e => setBookDate(e.target.value)} required />
 
-              {/* ── Slot-based time selector ─────────────────────────── */}
-              <label>Time * {slotsLoading && <span style={{ fontWeight:400, color:"#94a3b8" }}>Loading slots…</span>}</label>
-              {!bookDoctor || !bookDate ? (
-                <p style={{ fontSize:13, color:"#64748b", margin:"0 0 4px", fontStyle:"italic" }}>
-                  Select a doctor and date to see available time slots.
-                </p>
-              ) : slotsLoading ? (
-                <p style={{ fontSize:13, color:"#94a3b8", margin:"0 0 4px" }}>Checking doctor availability…</p>
-              ) : noSlotsMsg ? (
-                <p style={{ fontSize:13, color:"#f87171", margin:"0 0 4px" }}>{noSlotsMsg}</p>
-              ) : (
-                <select value={bookTime} onChange={e => setBookTime(e.target.value)} required>
-                  <option value="">— Choose time slot —</option>
-                  {availSlots.map(slot => (
-                    <option key={slot} value={slot}>{to12h(slot)}</option>
-                  ))}
-                </select>
-              )}
+              <label>
+                Time *{" "}
+                {slotsLoading && <span style={{ fontWeight:400, color:"#94a3b8" }}>Loading slots…</span>}
+              </label>
+              {(() => {
+                const needsDoctor  = !isSalesMeeting && (!bookDoctor || !bookDate);
+                const needsSales   =  isSalesMeeting && (!bookSales  || !bookDate);
+                if (needsDoctor || needsSales) {
+                  return (
+                    <p style={{ fontSize:13, color:"#64748b", margin:"0 0 4px", fontStyle:"italic" }}>
+                      {isSalesMeeting
+                        ? "Select a sales representative and date to see available time slots."
+                        : "Select a doctor and date to see available time slots."}
+                    </p>
+                  );
+                }
+                if (slotsLoading) return <p style={{ fontSize:13, color:"#94a3b8", margin:"0 0 4px" }}>Checking availability…</p>;
+                if (noSlotsMsg)   return <p style={{ fontSize:13, color:"#f87171", margin:"0 0 4px" }}>{noSlotsMsg}</p>;
+                return renderTimeGrid();
+              })()}
 
               <label>Duration (minutes)</label>
               <select value={bookDuration} onChange={e => setBookDuration(e.target.value)}>
@@ -408,10 +579,10 @@ export default function PatientHome() {
               </select>
 
               <label>Remark</label>
-              <textarea placeholder="Any special notes for the doctor"
+              <textarea placeholder="Any special notes"
                 value={bookRemark} onChange={e => setBookRemark(e.target.value)} rows={3} />
 
-              <button type="submit" className="btn-book" disabled={!!noSlotsMsg || slotsLoading}>
+              <button type="submit" className="btn-book" disabled={!!noSlotsMsg || slotsLoading || !bookTime}>
                 ✅ Confirm Booking
               </button>
               {bookMsg && <p className="book-msg">{bookMsg}</p>}
@@ -440,11 +611,12 @@ export default function PatientHome() {
   );
 }
 
-// Sub-component: today row
 function TodayAppointmentRow({ appt, token, navigate }) {
   const [available, setAvailable] = useState(null);
+  const isSalesMtg = appt.appointment_type === SALES_MEETING_TYPE;
 
   useEffect(() => {
+    if (isSalesMtg) { setAvailable(true); return; }
     if (!appt.doctor) return;
     const check = () => {
       fetch(`${API}/api/doctor/available/${appt.doctor}/`, {
@@ -454,9 +626,8 @@ function TodayAppointmentRow({ appt, token, navigate }) {
     check();
     const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
-  }, [appt.doctor, token]);
+  }, [appt.doctor, token, isSalesMtg]);
 
-  // FIX: pass role=patient in URL
   const handleJoin = async () => {
     try {
       const res = await fetch(`${API}/api/meeting/start/`, {
@@ -477,9 +648,13 @@ function TodayAppointmentRow({ appt, token, navigate }) {
     <div className="join-row">
       <div className="join-info">
         <strong>{time}</strong>
-        <span>Dr. {appt.doctor_name}</span>
-        <span>{appt.appointment_reason || "Consultation"}</span>
-        <span className="join-clinic">{appt.clinic_name}</span>
+        {isSalesMtg
+          ? <span>💼 {appt.sales_name || "Sales Rep"}</span>
+          : <span>Dr. {appt.doctor_name}</span>
+        }
+        <span>{appt.appointment_reason || (isSalesMtg ? "Sales Meeting" : "Consultation")}</span>
+        {appt.clinic_name && <span className="join-clinic">{appt.clinic_name}</span>}
+        {isSalesMtg && <span className="join-clinic" style={{ background:"rgba(245,158,11,0.15)", color:"#f59e0b" }}>Sales</span>}
       </div>
       {isEnded
         ? <span className="badge-ended-sm">Ended</span>
@@ -487,7 +662,7 @@ function TodayAppointmentRow({ appt, token, navigate }) {
             className={`btn-join ${available ? "green" : "grey"}`}
             onClick={handleJoin}
             disabled={!available}>
-            {available === null ? "⏳ Checking…" : available ? "📹 Start" : "🚫 Not Available"}
+            {available === null ? "⏳ Checking…" : available ? "📹 Join" : "🚫 Not Available"}
           </button>
       }
     </div>
