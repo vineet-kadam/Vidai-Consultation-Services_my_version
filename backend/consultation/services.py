@@ -3,9 +3,9 @@ from .models import *
 
 def create_doctor(doctor_data):
     username = doctor_data["first_name"].lower().strip() + "_" + doctor_data["last_name"].lower().strip()
-    doctor_available  = User.objects.filter(username=username).exists()
+    doctor_available  = User.objects.filter(username=username).first()
     if doctor_available:
-        return "Doctor already exists"
+        return doctor_available
     doctor_user = create_user({
         "username"   : username,
         "password"   : username,
@@ -17,9 +17,9 @@ def create_doctor(doctor_data):
 
 def create_patient(patient_data):
     username = patient_data["username"]
-    patient_available  = User.objects.filter(username=username).exists()
+    patient_available  = User.objects.filter(username=username).first()
     if patient_available:
-        return "Patient already exists"
+        return patient_available
     patient_user = create_user({
         "username"   : username,
         "password"   : username,

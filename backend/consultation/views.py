@@ -395,12 +395,31 @@ class MeetingBookView(APIView):
             
             appt_type    = request.data.get("appointment_type", "consultation")
             is_sales_mtg = (appt_type == "sales_meeting")
-            clinic_id    = request.data.get("clinic")
+            
+            # Get clinic by name or direct clinic ID
+            clinic_name_or_id = request.data.get("clinic")
+            if not clinic_name_or_id and request.data.get("appointment"):
+                clinic_name_or_id = request.data.get("appointment").get("clinic_name")
+            
+            # Lookup clinic by name or ID
+            clinic_id = None
+            if clinic_name_or_id:
+                try:
+                    clinic = Clinic.objects.get(name=clinic_name_or_id)
+                    clinic_id = clinic.id
+                except Clinic.DoesNotExist:
+                    try:
+                        clinic = Clinic.objects.get(id=clinic_name_or_id)
+                        clinic_id = clinic.id
+                    except Clinic.DoesNotExist:
+                        clinic_id = None
+            
             doctor_id    = User.objects.filter(username=request.data.get("doctor")['username']).first().id if request.data.get("doctor") else None
             sales_id     = request.data.get("sales_id")
             patient_id   = create_patient(request.data.get("patient")).id if request.data.get("patient") else None
-            reason       = request.data.get("appointment")['reason'] if request.data.get("appointment") else ""
-            sched_time   = request.data.get("appointment")['schedule_time'] if request.data.get("scheduled_time") else None
+            reason       = request.data.get("appointment", {}).get('reason', "")
+            # Use start_datetime if available, otherwise fall back to schedule_time
+            sched_time   = request.data.get("appointment", {}).get('start_datetime') or request.data.get("appointment", {}).get('schedule_time')
             duration     = request.data.get("appointment", {}).get("duration", 30)
             department   = request.data.get("department", "")
             remark       = request.data.get("appointment", {}).get("remark", "")
