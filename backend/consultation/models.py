@@ -1,10 +1,4 @@
-# models stub
-# consultation/models.py -- UPDATED
-# Key change: DoctorAvailability.clinic is now null=True, blank=True
-# This allows sales reps to have availability rows without a clinic FK.
-# After updating this file run:
-#   python manage.py makemigrations
-#   python manage.py migrate
+
 
 import uuid
 from django.db import models

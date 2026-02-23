@@ -1,5 +1,6 @@
 # consultation/urls.py
 from django.urls import path
+from .services import *
 from .views import (
     LoginView,
     ProfileView,
@@ -44,6 +45,7 @@ urlpatterns = [
     path("doctor/available/<int:doctor_id>/",    DoctorAvailabilityCheckView.as_view(), name="doctor-available"),
     path("doctor/slots/<int:doctor_id>/",        DoctorAvailableSlotsView.as_view(),    name="doctor-slots"),
 
+  
     # Sales availability
     path("sales/availability/<int:sales_id>/", SalesAvailabilityView.as_view(),   name="sales-availability"),
     path("sales/set-availability/",            SalesAvailabilityView.as_view(),   name="sales-set-availability"),

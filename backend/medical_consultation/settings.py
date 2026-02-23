@@ -12,7 +12,7 @@ SECRET_KEY = "django-insecure-your-secret-key-here"
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['192.168.0.104', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['192.168.0.104','192.168.10.191', '127.0.0.1', 'localhost']
 INSTALLED_APPS = [
     "daphne",
     "django.contrib.admin",
@@ -121,4 +121,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://192.168.0.104:3000",
+    "http://192.168.10.191:8000"
 ]
+
+API = "localhost:3000"
