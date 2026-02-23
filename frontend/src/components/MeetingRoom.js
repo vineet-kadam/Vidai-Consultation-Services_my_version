@@ -4,10 +4,8 @@
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import { API_URL as API, WS_URL as WS } from "../config";
 import "./MeetingRoom.css";
-
-const API              = "http://192.168.10.191:8000";
-const WS               = "ws://192.168.10.191:8000";
 const COMMIT_DELAY     = 1200;
 const SELF_PREFIX      = 0x01;
 const TRANSCRIPT_POLL_MS = 3000;
