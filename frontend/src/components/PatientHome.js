@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import "./PatientHome.css";
 
-const API = "http://localhost:8000";
+const API = "http://192.168.10.191:8000";
 
 const toDateStr = (d) => d.toISOString().split("T")[0];
 const todayStr  = () => toDateStr(new Date());

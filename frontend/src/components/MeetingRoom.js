@@ -6,8 +6,8 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import "./MeetingRoom.css";
 
-const API              = "http://localhost:8000";
-const WS               = "ws://localhost:8000";
+const API              = "http://192.168.10.191:8000";
+const WS               = "ws://192.168.10.191:8000";
 const COMMIT_DELAY     = 1200;
 const SELF_PREFIX      = 0x01;
 const TRANSCRIPT_POLL_MS = 3000;
@@ -428,11 +428,11 @@ export default function MeetingRoom() {
           </div>
           <button className={`mr-panel-btn ${rightPanel === "chat" ? "active" : ""}`}
             onClick={() => setRightPanel(p => p === "chat" ? null : "chat")} title="Room Chat">
-            💬 {unreadChat > 0 && <span className="mr-badge-dot">{unreadChat}</span>}
+            <img src="/SVG/chat.svg" alt="Chat" className="mr-icon" /> {unreadChat > 0 && <span className="mr-badge-dot">{unreadChat}</span>}
           </button>
           <button className={`mr-panel-btn ${rightPanel === "transcript" ? "active" : ""}`}
             onClick={() => setRightPanel(p => p === "transcript" ? null : "transcript")} title="Transcript">
-            📝 {unreadTx > 0 && <span className="mr-badge-dot">{unreadTx}</span>}
+            <img src="/SVG/transcript.svg" alt="Transcript" className="mr-icon" /> {unreadTx > 0 && <span className="mr-badge-dot">{unreadTx}</span>}
           </button>
         </div>
       </header>
@@ -476,9 +476,9 @@ export default function MeetingRoom() {
             <div className="mr-panel-header">
               <div className="mr-panel-tabs">
                 <button className={`mr-tab ${rightPanel === "chat" ? "active" : ""}`}
-                  onClick={() => setRightPanel("chat")}>💬 Chat</button>
+                  onClick={() => setRightPanel("chat")}><img src="/SVG/chat.svg" alt="Chat" className="mr-tab-icon" /> Chat</button>
                 <button className={`mr-tab ${rightPanel === "transcript" ? "active" : ""}`}
-                  onClick={() => setRightPanel("transcript")}>📝 Transcript</button>
+                  onClick={() => setRightPanel("transcript")}><img src="/SVG/transcript.svg" alt="Transcript" className="mr-tab-icon" /> Transcript</button>
               </div>
               <button className="mr-panel-close" onClick={() => setRightPanel(null)}>✕</button>
             </div>
@@ -544,39 +544,24 @@ export default function MeetingRoom() {
           </div>
         </div>
         <div className="mr-controls-center">
-          <button className={`mr-ctrl-btn ${micOn ? "on" : "off"}`} onClick={toggleMic} disabled={meetingEnded}>
-            <span className="mr-ctrl-icon">{micOn ? "🎙" : "🔇"}</span>
-            <span className="mr-ctrl-label">{micOn ? "Mute" : "Unmute"}</span>
+          <button className={`mr-ctrl-btn icon-only ${micOn ? "on" : "off"}`} onClick={toggleMic} disabled={meetingEnded} title={micOn ? "Mute" : "Unmute"}>
+            <img src={micOn ? "/SVG/mute_call.svg" : "/SVG/Unmute.svg"} alt="Mic" className="mr-ctrl-svg" />
           </button>
-          <button className={`mr-ctrl-btn ${camOn ? "on" : "off"}`} onClick={toggleCamera} disabled={meetingEnded}>
-            <span className="mr-ctrl-icon">📷</span>
-            <span className="mr-ctrl-label">{camOn ? "Stop Video" : "Start Video"}</span>
+          <button className={`mr-ctrl-btn icon-only ${camOn ? "on" : "off"}`} onClick={toggleCamera} disabled={meetingEnded} title={camOn ? "Stop Video" : "Start Video"}>
+            <img src={camOn ? "/SVG/started_video.svg" : "/SVG/Video%20Off.svg"} alt="Camera" className="mr-ctrl-svg" />
           </button>
           {!meetingEnded && (
-            <button className="mr-ctrl-btn end" onClick={handleEndCall}>
-              <span className="mr-ctrl-icon">📵</span>
-              <span className="mr-ctrl-label">Leave</span>
+            <button className="mr-ctrl-btn icon-only end" onClick={handleEndCall} title="Leave">
+              <img src="/SVG/Red_Cut_Call.svg" alt="Leave" className="mr-ctrl-svg" />
             </button>
           )}
           {meetingEnded && (
-            <button className="mr-ctrl-btn end" onClick={leaveRoom}>
-              <span className="mr-ctrl-icon">🚪</span>
-              <span className="mr-ctrl-label">Exit</span>
+            <button className="mr-ctrl-btn icon-only end" onClick={leaveRoom} title="Exit">
+              <img src="/SVG/Red_Cut_Call.svg" alt="Exit" className="mr-ctrl-svg" />
             </button>
           )}
         </div>
-        <div className="mr-controls-right">
-          <button className={`mr-ctrl-btn secondary ${rightPanel === "chat" ? "active" : ""}`}
-            onClick={() => setRightPanel(p => p === "chat" ? null : "chat")}>
-            <span className="mr-ctrl-icon">💬</span>
-            <span className="mr-ctrl-label">Chat{unreadChat > 0 ? ` (${unreadChat})` : ""}</span>
-          </button>
-          <button className={`mr-ctrl-btn secondary ${rightPanel === "transcript" ? "active" : ""}`}
-            onClick={() => setRightPanel(p => p === "transcript" ? null : "transcript")}>
-            <span className="mr-ctrl-icon">📝</span>
-            <span className="mr-ctrl-label">Transcript{unreadTx > 0 ? ` (${unreadTx})` : ""}</span>
-          </button>
-        </div>
+
       </footer>
 
     </div>

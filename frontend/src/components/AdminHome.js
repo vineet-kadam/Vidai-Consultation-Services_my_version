@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "./AdminHome.css";
 
-const API = "http://localhost:8000";
+const API = "http://192.168.10.191:8000";
 
 export default function AdminHome() {
   const navigate = useNavigate();
