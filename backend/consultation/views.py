@@ -6,7 +6,8 @@
 #   query PER ROW (N+1) after the serializer fix lands.
 #
 # All other logic is unchanged from the original.
-
+from medical_consultation.settings import *
+from consultation.services import *
 import traceback
 from datetime import datetime, timedelta
 
@@ -27,6 +28,7 @@ from .serializers import (
     MeetingSerializer,
     UserSerializer,
 )
+from .services import create_patient
 
 
 class LoginView(APIView):
@@ -384,20 +386,43 @@ def _check_double_booking(target_user, sched_time_str, field="doctor"):
 class MeetingBookView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    def post(self, request ):
         try:
+
+            """{'patient': {'username': 'CFC1-200', 'password': 'CFC1-200', 'first_name': 'Aaditya', 'last_name': 'Kharde'}, 'doctor': {'username': 'amelia_scott'}, 
+            'appointment': {'appointment_date': '2026-02-23', 'start_datetime': '2026-02-23T18:10:00+00:00', 'end_datetime': '2026-02-23T18:29:00+00:00',
+              'schedule_time': '0:19:00', 'clinic_name': 'Centro Fertility Center 1', 'reason': 'Fertility Consultation', 'remark': 'N/A'}}"""
+            
             appt_type    = request.data.get("appointment_type", "consultation")
             is_sales_mtg = (appt_type == "sales_meeting")
-
-            clinic_id    = request.data.get("clinic")
-            doctor_id    = request.data.get("doctor")
+            
+            # Get clinic by name or direct clinic ID
+            clinic_name_or_id = request.data.get("clinic")
+            if not clinic_name_or_id and request.data.get("appointment"):
+                clinic_name_or_id = request.data.get("appointment").get("clinic_name")
+            
+            # Lookup clinic by name or ID
+            clinic_id = None
+            if clinic_name_or_id:
+                try:
+                    clinic = Clinic.objects.get(name=clinic_name_or_id)
+                    clinic_id = clinic.id
+                except Clinic.DoesNotExist:
+                    try:
+                        clinic = Clinic.objects.get(id=clinic_name_or_id)
+                        clinic_id = clinic.id
+                    except Clinic.DoesNotExist:
+                        clinic_id = None
+            
+            doctor_id    = User.objects.filter(username=request.data.get("doctor")['username']).first().id if request.data.get("doctor") else None
             sales_id     = request.data.get("sales_id")
-            patient_id   = request.data.get("patient_id")
-            reason       = request.data.get("appointment_reason", "")
-            sched_time   = request.data.get("scheduled_time")
-            duration     = request.data.get("duration", 30)
+            patient_id   = create_patient(request.data.get("patient")).id if request.data.get("patient") else None
+            reason       = request.data.get("appointment", {}).get('reason', "")
+            # Use start_datetime if available, otherwise fall back to schedule_time
+            sched_time   = request.data.get("appointment", {}).get('start_datetime') or request.data.get("appointment", {}).get('schedule_time')
+            duration     = request.data.get("appointment", {}).get("duration", 30)
             department   = request.data.get("department", "")
-            remark       = request.data.get("remark", "")
+            remark       = request.data.get("appointment", {}).get("remark", "")
             meeting_type = request.data.get("meeting_type", "SALES_MEETING" if is_sales_mtg else "CONSULT")
 
             if not sched_time:
@@ -642,7 +667,7 @@ class MeetingStartView(APIView):
                     meeting.status = "started"
                     meeting.save()
 
-            room_url = f"http://localhost:3000/room/{meeting.room_id}?meeting_id={meeting.meeting_id}"
+            room_url = f"http://{API}/room/{meeting.room_id}?meeting_id={meeting.meeting_id}"
             return Response({
                 "room_id": meeting.room_id, "meeting_id": meeting.meeting_id,
                 "room_url": room_url, "doctor_available": True,
