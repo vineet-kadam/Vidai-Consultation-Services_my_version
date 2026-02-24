@@ -2,7 +2,7 @@
 // Centralized configuration for API endpoints
 // Change these values to point to your backend server
 
-const BASE_URL = "192.168.10.191:8000";
+const BASE_URL = "https://remote-epson-sierra-wood.trycloudflare.com/api";
 
 export const API_URL = `http://${BASE_URL}`;
 export const WS_URL = `ws://${BASE_URL}`;
