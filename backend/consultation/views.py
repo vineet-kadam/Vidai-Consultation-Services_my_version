@@ -711,3 +711,39 @@ class MeetingTranscriptAppendView(APIView):
         except Exception:
             print(traceback.format_exc())
             return Response({"error": "Failed to append transcript"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SocketStatusView(APIView):
+    """
+    API endpoint to get WebSocket status information.
+    Provides non-blocking, read-only access to socket connectivity data.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        """Get current WebSocket status information."""
+        try:
+            info = SocketStatusService.get_socket_info_summary()
+            return Response(info, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"[SocketStatusView] Error: {traceback.format_exc()}")
+            return Response(
+                {"error": "Failed to retrieve socket status"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def get_all_sockets(self, request):
+        """Get detailed information about all active sockets."""
+        try:
+            sockets = SocketStatusService.get_all_sockets()
+            return Response({
+                "total": len(sockets),
+                "sockets": sockets,
+                "timestamp": datetime.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"[SocketStatusView] Error: {traceback.format_exc()}")
+            return Response(
+                {"error": "Failed to retrieve all sockets"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

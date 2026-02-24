@@ -23,12 +23,16 @@ from .views import (
     MeetingStartView,
     MeetingEndView,
     MeetingTranscriptAppendView,
+    SocketStatusView,
 )
 
 urlpatterns = [
     # Auth
     path("login/",   LoginView.as_view(),   name="login"),
     path("profile/", ProfileView.as_view(), name="profile"),
+
+    # WebSocket Status
+    path("socket-status/", SocketStatusView.as_view(), name="socket-status"),
 
     # User management
     path("users/create/",   UserCreateView.as_view(),  name="user-create"),

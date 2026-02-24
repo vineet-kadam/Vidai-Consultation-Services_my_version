@@ -1,0 +1,203 @@
+/* src/components/SocketStatusIndicator.css */
+/* Optional styling for SocketStatusIndicator component */
+
+.socket-status-indicator {
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  transition: all 0.3s ease;
+}
+
+.socket-status-indicator.active {
+  background-color: #f0fdf4;
+  border: 2px solid #22c55e;
+}
+
+.socket-status-indicator.inactive {
+  background-color: #fef2f2;
+  border: 2px solid #ef4444;
+}
+
+.socket-status-indicator__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.socket-status-indicator__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.socket-status-indicator.active .socket-status-indicator__title {
+  color: #166534;
+}
+
+.socket-status-indicator.inactive .socket-status-indicator__title {
+  color: #7f1d1d;
+}
+
+.socket-status-indicator__status {
+  display: inline-block;
+  font-size: 20px;
+}
+
+.socket-status-indicator__updating {
+  font-size: 12px;
+  color: #7c3aed;
+  margin-left: auto;
+}
+
+.socket-status-indicator__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.socket-status-indicator__stat {
+  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+}
+
+.socket-status-indicator__stat-label {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.socket-status-indicator__stat-value {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.socket-status-indicator.active .socket-status-indicator__stat-value {
+  color: #22c55e;
+}
+
+.socket-status-indicator.inactive .socket-status-indicator__stat-value {
+  color: #ef4444;
+}
+
+.socket-status-indicator__breakdown {
+  font-size: 12px;
+}
+
+.socket-status-indicator__breakdown-item {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.socket-status-indicator__error {
+  padding: 10px;
+  background-color: #fecaca;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.socket-status-indicator__details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.socket-status-indicator__details summary {
+  font-weight: bold;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+
+.socket-status-indicator__details-content {
+  margin-top: 8px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background-color: rgba(0, 0, 0, 0.03);
+  padding: 8px;
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 300px;
+}
+
+.socket-status-indicator__details-content p {
+  margin: 4px 0;
+}
+
+.socket-status-indicator__details-content ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.socket-status-indicator__details-content li {
+  margin: 2px 0;
+  list-style-type: disc;
+}
+
+.socket-status-indicator__details-content code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: inherit;
+}
+
+/* Compact mode */
+.socket-status-indicator.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background-color: transparent;
+  border: none;
+  margin-bottom: 0;
+  font-size: 12px;
+}
+
+.socket-status-indicator.compact .socket-status-indicator__status {
+  font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .socket-status-indicator {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .socket-status-indicator__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .socket-status-indicator__title {
+    font-size: 16px;
+  }
+
+  .socket-status-indicator__stat-value {
+    font-size: 16px;
+  }
+}
+
+/* Animation for status change */
+@keyframes statusFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.socket-status-indicator.active {
+  animation: statusFlash 2s ease-out;
+}
