@@ -4,8 +4,8 @@
 
 const BASE_URL = "remote-epson-sierra-wood.trycloudflare.com";
 
-export const API_URL = `https://${BASE_URL}/api`;
-export const WS_URL = `wss://${BASE_URL}/ws`;
+export const API_URL = `https://${BASE_URL}`;
+export const WS_URL = `wss://${BASE_URL}`;
 
 // For convenience, you can also export the full base URL
 const config = {
