@@ -46,9 +46,10 @@ export default function Login() {
 
       // Check if there's a redirect URL saved (e.g., user tried to access meeting room without login)
       const redirectUrl = localStorage.getItem("redirectAfterLogin");
+      console.log("redirectAfterLogin:", redirectUrl); // Debug log
       if (redirectUrl) {
-        localStorage.removeItem("redirectAfterLogin");
         navigate(redirectUrl);
+        localStorage.removeItem("redirectAfterLogin");
         return;
       }
 

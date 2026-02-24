@@ -29,9 +29,14 @@ function PrivateRoute({ children }) {
   const token = localStorage.getItem("token");
   const location = useLocation();
   
+  console.log("PrivateRoute - Full location:", location); // Debug full location object
+  console.log("PrivateRoute - pathname:", location.pathname); // Debug pathname
+  console.log("PrivateRoute - search:", location.search); // Debug search params
+  
   if (!token) {
     // Save the intended destination URL before redirecting to login
     const redirectUrl = location.pathname + location.search;
+    console.log("PrivateRoute saving redirectUrl:", redirectUrl); // Debug log
     localStorage.setItem("redirectAfterLogin", redirectUrl);
     return <Navigate to="/" replace />;
   }
@@ -42,7 +47,14 @@ function PrivateRoute({ children }) {
 function RoleRoute({ children, allowedRoles }) {
   const token = localStorage.getItem("token");
   const role  = localStorage.getItem("role");
-  if (!token)                                       return <Navigate to="/" replace />;
+  const location = useLocation();
+  
+  if (!token) {
+    // Save the intended destination URL before redirecting to login
+    const redirectUrl = location.pathname + location.search;
+    localStorage.setItem("redirectAfterLogin", redirectUrl);
+    return <Navigate to="/" replace />;
+  }
   if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/" replace />;
   return children;
 }
@@ -68,9 +80,27 @@ export default function App() {
             It was an alias that caused the stale-role navigation bug.
             All roles now use /room/:roomId uniformly. */}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<CatchAllRedirect />} />
 
       </Routes>
     </Router>
   );
+}
+
+// Catch-all route that saves redirect URL before going to login
+function CatchAllRedirect() {
+  const location = useLocation();
+  const token = localStorage.getItem("token");
+  
+  console.log("CatchAllRedirect triggered for:", location.pathname + location.search); // Debug log
+  
+  if (!token) {
+    const redirectUrl = location.pathname + location.search;
+    if (redirectUrl !== "/" && redirectUrl !== "") {
+      console.log("CatchAllRedirect saving redirectUrl:", redirectUrl); // Debug log
+      localStorage.setItem("redirectAfterLogin", redirectUrl);
+    }
+  }
+  
+  return <Navigate to="/" replace />;
 }

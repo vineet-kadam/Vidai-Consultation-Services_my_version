@@ -3,6 +3,7 @@
 // Change these values to point to your backend server
 
 const BASE_URL = "remote-epson-sierra-wood.trycloudflare.com";
+// const BASE_URL = "192.168.10.191:8000";
 
 export const API_URL = `https://${BASE_URL}`;
 export const WS_URL = `wss://${BASE_URL}`;

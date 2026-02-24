@@ -2,13 +2,13 @@
 // Bug fix: myRole now reads from URL ?role= param first (set by home pages),
 // falling back to localStorage. This fixes the "doctor shown as sales" naming bug.
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, memo } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { API_URL as API, WS_URL as WS } from "../config";
 import "./MeetingRoom.css";
-const COMMIT_DELAY     = 1200;
+const COMMIT_DELAY     = 800; // Flush transcript after 800ms of silence
 const SELF_PREFIX      = 0x01;
-const TRANSCRIPT_POLL_MS = 3000;
+const TRANSCRIPT_POLL_MS = 5000; // Poll less frequently since we sync after append
 
 const ICE_CONFIG = {
   iceServers: [
@@ -28,9 +28,9 @@ const fmt12 = (isoString) => {
 };
 
 // ---------------------------------------------------------------------------
-// VideoTile — defined outside MeetingRoom so React never remounts it
+// VideoTile — memoized to prevent unnecessary re-renders
 // ---------------------------------------------------------------------------
-function VideoTile({ stream, name, role, muted, label }) {
+const VideoTile = memo(function VideoTile({ stream, name, role, muted, label }) {
   const videoRef = useRef(null);
   useEffect(() => {
     const el = videoRef.current;
@@ -48,7 +48,7 @@ function VideoTile({ stream, name, role, muted, label }) {
       </div>
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MeetingRoom
@@ -82,6 +82,7 @@ export default function MeetingRoom() {
   const timerRef    = useRef(null);
   const latestRef   = useRef("");
   const meetingIdRef = useRef(meetingId);
+  const flushingRef = useRef(false); // Prevent concurrent flushes
 
   const [micOn,        setMicOn]        = useState(true);
   const [camOn,        setCamOn]        = useState(true);
@@ -275,21 +276,53 @@ export default function MeetingRoom() {
   const _prefixed = (pcm) => { const out = new Uint8Array(1 + pcm.byteLength); out[0] = SELF_PREFIX; out.set(new Uint8Array(pcm), 1); return out.buffer; };
 
   const _flushBuffer = useCallback(() => {
+    // Prevent concurrent flushes
+    if (flushingRef.current) return;
+    
     const text = bufRef.current.trim();
     bufRef.current = "";
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (!text) return;
+    
+    flushingRef.current = true;
+    
     const speakerLabel = myRole.charAt(0).toUpperCase() + myRole.slice(1);
     const line = `${speakerLabel} (${myName}): ${text}`;
+    console.log("[Transcript] Appending:", line); // Debug log
     setTranscript(prev => { const n = prev ? `${prev}\n${line}` : line; latestRef.current = n; return n; });
     if (rightPanel !== "transcript") setUnreadTx(n => n + 1);
-    if (!meetingIdRef.current || !token) return;
+    
+    if (!meetingIdRef.current || !token) {
+      console.warn("[Transcript] Missing meetingId or token!", { meetingId: meetingIdRef.current, hasToken: !!token });
+      flushingRef.current = false;
+      return;
+    }
+    
+    // Just append - polling will sync transcript from other participants
     fetch(`${API}/api/append-transcript/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ meeting_id: meetingIdRef.current, line }),
-    }).catch(console.error);
+    })
+      .then(res => {
+        if (!res.ok) console.error("[Transcript] Append failed:", res.status);
+        else console.log("[Transcript] Append success");
+      })
+      .catch(err => console.error("[Transcript] Append error:", err))
+      .finally(() => { flushingRef.current = false; });
   }, [myRole, myName, token, rightPanel]);
+
+  // Safety net: flush any stale buffer every 5 seconds
+  useEffect(() => {
+    if (!connected || meetingEnded) return;
+    const interval = setInterval(() => {
+      // Only flush if there's buffered text and no pending timer (stale text)
+      if (bufRef.current.trim() && !timerRef.current && !flushingRef.current) {
+        _flushBuffer();
+      }
+    }, 800);
+    return () => clearInterval(interval);
+  }, [connected, meetingEnded, _flushBuffer]);
 
   const _startSttCapture = useCallback((ws) => {
     if (!localStreamRef.current) return;
@@ -542,10 +575,10 @@ export default function MeetingRoom() {
           </div>
         </div>
         <div className="mr-controls-center">
-          <button className={`mr-ctrl-btn icon-only ${micOn ? "on" : "off"}`} onClick={toggleMic} disabled={meetingEnded} title={micOn ? "Mute" : "Unmute"}>
+          <button className={`mr-ctrl-btn icon-only ${micOn ? "on" : "off"}`} onClick={toggleMic}  title={micOn ? "Mute" : "Unmute"}>
             <img src={micOn ? "/SVG/mute_call.svg" : "/SVG/Unmute.svg"} alt="Mic" className="mr-ctrl-svg" />
           </button>
-          <button className={`mr-ctrl-btn icon-only ${camOn ? "on" : "off"}`} onClick={toggleCamera} disabled={meetingEnded} title={camOn ? "Stop Video" : "Start Video"}>
+          <button className={`mr-ctrl-btn icon-only ${camOn ? "on" : "off"}`} onClick={toggleCamera}  title={camOn ? "Stop Video" : "Start Video"}>
             <img src={camOn ? "/SVG/started_video.svg" : "/SVG/Video%20Off.svg"} alt="Camera" className="mr-ctrl-svg" />
           </button>
           {!meetingEnded && (
