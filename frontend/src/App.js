@@ -16,7 +16,7 @@
 //   src/components/PatientCall.js  — dead file, no route loads it, DELETE IT
 
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import Login       from "./components/Login";
 import AdminHome   from "./components/AdminHome";
@@ -27,7 +27,16 @@ import MeetingRoom from "./components/MeetingRoom";
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem("token");
-  return token ? children : <Navigate to="/" replace />;
+  const location = useLocation();
+  
+  if (!token) {
+    // Save the intended destination URL before redirecting to login
+    const redirectUrl = location.pathname + location.search;
+    localStorage.setItem("redirectAfterLogin", redirectUrl);
+    return <Navigate to="/" replace />;
+  }
+  
+  return children;
 }
 
 function RoleRoute({ children, allowedRoles }) {

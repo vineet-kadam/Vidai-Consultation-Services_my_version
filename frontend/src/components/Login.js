@@ -11,6 +11,7 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async () => {
@@ -18,6 +19,9 @@ export default function Login() {
       setError("Please enter username and password");
       return;
     }
+
+    setLoading(true);
+    setError("");
 
     try {
       const res  = await fetch(`${API}/api/login/`, {
@@ -30,6 +34,7 @@ export default function Login() {
 
       if (!res.ok) {
         setError("Invalid credentials");
+        setLoading(false);
         return;
       }
 
@@ -39,6 +44,14 @@ export default function Login() {
       localStorage.setItem("username",  data.username);
       localStorage.setItem("full_name", data.full_name);
 
+      // Check if there's a redirect URL saved (e.g., user tried to access meeting room without login)
+      const redirectUrl = localStorage.getItem("redirectAfterLogin");
+      if (redirectUrl) {
+        localStorage.removeItem("redirectAfterLogin");
+        navigate(redirectUrl);
+        return;
+      }
+
       // Navigate based on role returned by the backend
       if (data.role === "admin" || data.is_superuser) {
         navigate("/admin");
@@ -46,14 +59,15 @@ export default function Login() {
         navigate("/doctor");
       } else if (data.role === "patient") {
         navigate("/patient");
-      }else if (data.role === "sales")        
-        navigate("/sales"); 
-      else {
+      } else if (data.role === "sales") {
+        navigate("/sales");
+      } else {
         navigate("/doctor"); // fallback
       }
 
     } catch (err) {
       setError("Server error — make sure the backend is running");
+      setLoading(false);
     }
   };
 
@@ -77,7 +91,9 @@ export default function Login() {
           autoComplete="current-password"
         />
 
-        <button onClick={handleLogin}>Login</button>
+        <button onClick={handleLogin} disabled={loading}>
+          {loading ? <span className="spinner"></span> : "Login"}
+        </button>
 
         {error && <p className="error">{error}</p>}
       </div>

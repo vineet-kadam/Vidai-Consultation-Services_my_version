@@ -1,7 +1,7 @@
 // src/components/AdminHome.js
 // Admin dashboard — manage clinics, patients, and doctors.
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_URL as API } from "../config";
 import "./AdminHome.css";
@@ -32,15 +32,6 @@ export default function AdminHome() {
   const [newClinicUser,setNewClinicUser]= useState("");
   const [newDept,      setNewDept]      = useState("");
 
-  useEffect(() => { if (!token) navigate("/"); }, [token, navigate]);
-
-  useEffect(() => { fetchClinics(); fetchDoctors(); }, []);
-
-  useEffect(() => {
-    if (selectedClinic) fetchPatients(selectedClinic);
-    else setPatients([]);
-  }, [selectedClinic]);
-
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
 
   const fetchClinics = async () => {
@@ -50,14 +41,14 @@ export default function AdminHome() {
     } catch (e) { console.error(e); }
   };
 
-  const fetchPatients = async (clinicId) => {
+  const fetchPatients = useCallback(async (clinicId) => {
     try {
       const res = await fetch(`${API}/api/list-patients/?clinic=${clinicId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setPatients(await res.json());
     } catch (e) { console.error(e); }
-  };
+  }, [token]);
 
   const fetchDoctors = async () => {
     try {
@@ -65,6 +56,15 @@ export default function AdminHome() {
       if (res.ok) setDoctors(await res.json());
     } catch (e) { console.error(e); }
   };
+
+  useEffect(() => { if (!token) navigate("/"); }, [token, navigate]);
+
+  useEffect(() => { fetchClinics(); fetchDoctors(); }, []);
+
+  useEffect(() => {
+    if (selectedClinic) fetchPatients(selectedClinic);
+    else setPatients([]);
+  }, [selectedClinic, fetchPatients]);
 
   const handleCreateClinic = async (e) => {
     e.preventDefault();
